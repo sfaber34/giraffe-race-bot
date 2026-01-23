@@ -69,8 +69,7 @@ function logDivider() {
 // ============================================================================
 
 const BLOCK_TIME_MS = 2000; // Base has ~2 second blocks
-const BUFFER_BLOCKS = 2;    // Wake up 2 blocks early to be ready
-const ACTIVE_POLL_MS = 2000; // Poll interval when actively waiting for target block
+const POLL_INTERVAL_MS = 2000; // Poll interval when waiting
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -88,43 +87,6 @@ function formatDuration(ms) {
     return `${minutes}m ${remainingSeconds}s`;
   }
   return `${seconds}s`;
-}
-
-// Wait for a specific block to be reached, sleeping long when far, polling when close
-async function waitForBlock(targetBlock, reason) {
-  const target = Number(targetBlock);
-  let currentBlock = await withRetry(() => provider.getBlockNumber());
-  let blocksLeft = target - currentBlock;
-  
-  // If we're far from target, do a long sleep first
-  if (blocksLeft > BUFFER_BLOCKS) {
-    const sleepBlocks = blocksLeft - BUFFER_BLOCKS;
-    const sleepMs = blocksToMs(sleepBlocks);
-    log('😴', `Sleeping ${formatDuration(sleepMs)} (~${sleepBlocks} blocks) - ${reason}`);
-    log('⏰', `Will wake at block ~${currentBlock + sleepBlocks} (target: ${target})`);
-    console.log('');
-    await sleep(sleepMs);
-  }
-  
-  // Now poll until we reach the target
-  let lastLoggedBlock = 0;
-  while (true) {
-    currentBlock = await withRetry(() => provider.getBlockNumber());
-    blocksLeft = target - currentBlock;
-    
-    if (currentBlock >= target) {
-      log('✅', `Reached target block ${target}`);
-      return currentBlock;
-    }
-    
-    // Only log once per block to avoid spam
-    if (currentBlock !== lastLoggedBlock) {
-      log('⏳', `Waiting for block ${target} (${blocksLeft} left) - ${reason}`);
-      lastLoggedBlock = currentBlock;
-    }
-    
-    await sleep(ACTIVE_POLL_MS);
-  }
 }
 
 // Retry wrapper for RPC calls with provider fallback
@@ -188,7 +150,7 @@ async function waitForActiveUsers() {
     const activeUsers = await getActiveUsers();
     
     if (activeUsers > 0) {
-      log('🎉', `${activeUsers} active user(s) detected! Starting race...`);
+      log('🎉', `${activeUsers} active user(s) detected! Ready to start race...`);
       return activeUsers;
     }
     
@@ -198,50 +160,83 @@ async function waitForActiveUsers() {
 }
 
 // ============================================================================
-// RACE STATE FUNCTIONS
+// RACE STATE FUNCTIONS (using new ABI)
 // ============================================================================
 
-async function getRaceState(raceId) {
+async function getRaceActionability(raceId) {
+  const [
+    canFinalizeNow,
+    canSettleNow,
+    bettingCloseBlock,
+    submissionCloseBlock,
+    finalizeEntropyBlock,
+    finalizeBlockhashExpiresAt,
+    settleBlockhashExpiresAt,
+    blocksUntilFinalizeExpiry,
+    blocksUntilSettleExpiry
+  ] = await withRetry(() => giraffeRace.getRaceActionabilityById(raceId));
+
+  return {
+    canFinalizeNow,
+    canSettleNow,
+    bettingCloseBlock: Number(bettingCloseBlock),
+    submissionCloseBlock: Number(submissionCloseBlock),
+    finalizeEntropyBlock: Number(finalizeEntropyBlock),
+    finalizeBlockhashExpiresAt: Number(finalizeBlockhashExpiresAt),
+    settleBlockhashExpiresAt: Number(settleBlockhashExpiresAt),
+    blocksUntilFinalizeExpiry: Number(blocksUntilFinalizeExpiry),
+    blocksUntilSettleExpiry: Number(blocksUntilSettleExpiry),
+  };
+}
+
+async function getRaceBasicInfo(raceId) {
   const [bettingCloseBlock, settled, winner, seed, totalPot, totalOnLane] = 
     await withRetry(() => giraffeRace.getRaceById(raceId));
   
-  const [, submissionCloseBlock, settledAtBlock] = 
-    await withRetry(() => giraffeRace.getRaceScheduleById(raceId));
-  
-  const [assignedCount, tokenIds, originalOwners] = 
+  const [assignedCount] = 
     await withRetry(() => giraffeRace.getRaceGiraffesById(raceId));
   
   const entryCount = await withRetry(() => giraffeRace.getRaceEntryCount(raceId));
 
   return {
     raceId,
-    bettingCloseBlock,
-    submissionCloseBlock,
-    settledAtBlock,
     settled,
-    winner,
+    winner: Number(winner),
     totalPot,
     assignedCount: Number(assignedCount),
     entryCount: Number(entryCount),
   };
 }
 
-function logRaceState(state, currentBlock) {
+function logRaceState(basic, actionability, currentBlock) {
   logDivider();
-  log('📊', `Race #${state.raceId} State:`);
-  console.log(`    ├─ Settled: ${state.settled ? '✅ Yes' : '❌ No'}`);
-  console.log(`    ├─ Giraffes Assigned: ${state.assignedCount}/6`);
-  console.log(`    ├─ Entry Pool Size: ${state.entryCount}`);
+  log('📊', `Race #${basic.raceId} State:`);
+  console.log(`    ├─ Settled: ${basic.settled ? '✅ Yes' : '❌ No'}`);
+  console.log(`    ├─ Giraffes Assigned: ${basic.assignedCount}/6`);
+  console.log(`    ├─ Entry Pool Size: ${basic.entryCount}`);
+  console.log(`    ├─ Total Pot: ${ethers.formatUnits(basic.totalPot, 6)} USDC`);
   
-  const subBlocksLeft = Number(state.submissionCloseBlock) - currentBlock;
-  const betBlocksLeft = Number(state.bettingCloseBlock) - currentBlock;
-  
-  console.log(`    ├─ Submission Close: Block ${state.submissionCloseBlock} ${subBlocksLeft <= 0 ? '(CLOSED)' : `(${subBlocksLeft} blocks / ~${formatDuration(blocksToMs(subBlocksLeft))})`}`);
-  console.log(`    ├─ Betting Close: Block ${state.bettingCloseBlock} ${betBlocksLeft <= 0 ? '(CLOSED)' : `(${betBlocksLeft} blocks / ~${formatDuration(blocksToMs(betBlocksLeft))})`}`);
-  console.log(`    └─ Total Pot: ${ethers.formatUnits(state.totalPot, 6)} USDC`);
-  
-  if (state.settled) {
-    console.log(`    └─ Winner: Lane ${state.winner}`);
+  if (basic.settled) {
+    console.log(`    └─ Winner: Lane ${basic.winner}`);
+  } else {
+    console.log(`    ├─ Can Finalize Now: ${actionability.canFinalizeNow ? '✅ YES' : '❌ No'}`);
+    console.log(`    ├─ Can Settle Now: ${actionability.canSettleNow ? '✅ YES' : '❌ No'}`);
+    
+    const subBlocksLeft = actionability.submissionCloseBlock - currentBlock;
+    const betBlocksLeft = actionability.bettingCloseBlock - currentBlock;
+    
+    if (subBlocksLeft > 0) {
+      console.log(`    ├─ Submission closes in: ${subBlocksLeft} blocks (~${formatDuration(blocksToMs(subBlocksLeft))})`);
+    }
+    if (betBlocksLeft > 0 && actionability.bettingCloseBlock > 0) {
+      console.log(`    ├─ Betting closes in: ${betBlocksLeft} blocks (~${formatDuration(blocksToMs(betBlocksLeft))})`);
+    }
+    if (actionability.blocksUntilFinalizeExpiry > 0) {
+      console.log(`    ├─ Finalize expires in: ${actionability.blocksUntilFinalizeExpiry} blocks`);
+    }
+    if (actionability.blocksUntilSettleExpiry > 0) {
+      console.log(`    └─ Settle expires in: ${actionability.blocksUntilSettleExpiry} blocks`);
+    }
   }
 }
 
@@ -298,21 +293,38 @@ async function executeSettleRace() {
 }
 
 // ============================================================================
-// MAIN BOT LOOP - STATE MACHINE
+// SMART WAITING
 // ============================================================================
 
-const BotState = {
-  CHECK_STATUS: 'CHECK_STATUS',
-  WAIT_FOR_COOLDOWN: 'WAIT_FOR_COOLDOWN',
-  CREATE_RACE: 'CREATE_RACE',
-  WAIT_FOR_SUBMISSIONS: 'WAIT_FOR_SUBMISSIONS',
-  FINALIZE_LINEUP: 'FINALIZE_LINEUP',
-  WAIT_FOR_BETTING: 'WAIT_FOR_BETTING',
-  SETTLE_RACE: 'SETTLE_RACE',
-};
+// Wait for condition to be true, with smart sleeping
+async function waitForCondition(checkFn, getBlocksToWait, reason) {
+  while (true) {
+    const result = await checkFn();
+    if (result.ready) {
+      return result;
+    }
+    
+    const blocksToWait = getBlocksToWait(result);
+    if (blocksToWait > 2) {
+      // Sleep for most of the wait time
+      const sleepBlocks = blocksToWait - 2;
+      const sleepMs = blocksToMs(sleepBlocks);
+      log('😴', `Sleeping ${formatDuration(sleepMs)} (~${sleepBlocks} blocks) - ${reason}`);
+      console.log('');
+      await sleep(sleepMs);
+    } else {
+      // Close to ready, poll frequently
+      await sleep(POLL_INTERVAL_MS);
+    }
+  }
+}
+
+// ============================================================================
+// MAIN BOT LOOP
+// ============================================================================
 
 async function runBot() {
-  logHeader('🦒 GIRAFFE RACE BOT (Smart Mode)');
+  logHeader('🦒 GIRAFFE RACE BOT (Smart Mode v2)');
   
   // Display startup info
   const walletInfo = await getWalletInfo();
@@ -322,8 +334,8 @@ async function runBot() {
   log('📜', `Contract: ${config.contracts.giraffeRace}`);
   log('🌐', `RPC Pool: ${config.fallbackRpcs.length} endpoints`);
   log('🔗', `Active RPC: ${config.fallbackRpcs[currentProviderIndex]}`);
-  log('🧠', `Smart sleep enabled - will only poll when action is near`);
   log('👥', `Presence API: ${config.bot.presenceApiUrl}`);
+  log('🧠', `Using canFinalizeNow/canSettleNow from contract - no more guessing!`);
   
   logHeader('🔄 STARTING BOT LOOP');
   
@@ -332,100 +344,149 @@ async function runBot() {
       const currentBlock = await withRetry(() => provider.getBlockNumber());
       log('📦', `Current Block: ${currentBlock}`);
       
+      // Check for active race
+      const activeRaceId = await withRetry(() => giraffeRace.getActiveRaceIdOrZero());
+      const hasActiveRace = activeRaceId > 0n;
+      
       // Get cooldown status
       const [canCreate, blocksRemaining, cooldownEndsAtBlock] = 
         await withRetry(() => giraffeRace.getCreateRaceCooldown());
       
-      // Get latest race info
-      const nextId = await withRetry(() => giraffeRace.nextRaceId());
-      const hasRaces = nextId > 0n;
-      const latestRaceId = hasRaces ? nextId - 1n : null;
+      log('🔢', `Active Race: ${hasActiveRace ? `#${activeRaceId}` : 'None'} | Can Create: ${canCreate ? '✅' : '❌'}`);
       
-      log('🔢', `Latest Race ID: ${latestRaceId ?? 'None'} | Can Create: ${canCreate ? '✅' : '❌'}`);
-      
-      // CASE 1: No races exist - create first one (if users are active)
-      if (!hasRaces) {
-        if (canCreate) {
-          // Check if anyone is online before creating a race
-          const activeUsers = await getActiveUsers();
-          if (activeUsers === 0) {
-            await waitForActiveUsers();
-            continue; // Re-check state after users arrive
+      // ========================================
+      // CASE 1: No active race - create one
+      // ========================================
+      if (!hasActiveRace) {
+        if (!canCreate) {
+          // Wait for cooldown
+          log('⏱️', `Cooldown: ${blocksRemaining} blocks remaining (ends at ${cooldownEndsAtBlock})`);
+          const sleepBlocks = Number(blocksRemaining) > 2 ? Number(blocksRemaining) - 2 : 0;
+          if (sleepBlocks > 0) {
+            log('😴', `Sleeping ${formatDuration(blocksToMs(sleepBlocks))} until cooldown ends...`);
+            console.log('');
+            await sleep(blocksToMs(sleepBlocks));
+          } else {
+            await sleep(POLL_INTERVAL_MS);
           }
-          log('🎯', 'ACTION: Creating first race');
-          await executeCreateRace();
-          await sleep(3000); // Brief pause after tx
-          continue;
-        } else {
-          log('⏱️', `Cooldown: ${blocksRemaining} blocks until we can create`);
-          await waitForBlock(cooldownEndsAtBlock, 'cooldown ending');
           continue;
         }
+        
+        // Check if anyone is online before creating a race
+        const activeUsers = await getActiveUsers();
+        log('👥', `Active users: ${activeUsers}`);
+        
+        if (activeUsers === 0) {
+          await waitForActiveUsers();
+          continue; // Re-check state after users arrive
+        }
+        
+        log('🎯', 'ACTION: Creating new race');
+        await executeCreateRace();
+        await sleep(3000);
+        continue;
       }
       
-      // CASE 2: We have races - check the latest one
-      const raceState = await getRaceState(latestRaceId);
-      logRaceState(raceState, currentBlock);
+      // ========================================
+      // CASE 2: Active race exists - manage it
+      // ========================================
+      const basic = await getRaceBasicInfo(activeRaceId);
+      const actionability = await getRaceActionability(activeRaceId);
+      logRaceState(basic, actionability, currentBlock);
       
-      // CASE 2a: Race is settled - create new one (if cooldown allows AND users active)
-      if (raceState.settled) {
-        if (canCreate) {
-          // Check if anyone is online before creating a new race
-          const activeUsers = await getActiveUsers();
-          log('👥', `Active users: ${activeUsers}`);
-          
-          if (activeUsers === 0) {
-            await waitForActiveUsers();
-            continue; // Re-check state after users arrive
-          }
-          
-          log('🎯', 'ACTION: Previous race settled - creating new race');
-          await executeCreateRace();
+      // Race is settled - shouldn't happen if getActiveRaceIdOrZero works correctly
+      if (basic.settled) {
+        log('✅', 'Race already settled, checking for next action...');
+        await sleep(3000);
+        continue;
+      }
+      
+      // ----------------------------------------
+      // Check if we can FINALIZE now
+      // ----------------------------------------
+      if (actionability.canFinalizeNow) {
+        // Wait 1 extra block to ensure all RPC nodes are synced
+        log('🎯', 'ACTION: Contract says canFinalizeNow=true - waiting 1 block for RPC sync...');
+        await sleep(BLOCK_TIME_MS);
+        
+        log('🦒', 'Finalizing lineup...');
+        const success = await executeFinalizeRaceGiraffes();
+        if (success) {
           await sleep(3000);
-          continue;
         } else {
-          log('⏱️', `Cooldown: ${blocksRemaining} blocks remaining`);
-          await waitForBlock(cooldownEndsAtBlock, 'cooldown ending');
-          continue;
+          // If failed, wait a bit and retry
+          log('⏳', 'Finalize failed, waiting before retry...');
+          await sleep(5000);
         }
-      }
-      
-      // CASE 2b: Race is active - determine what phase we're in
-      const lineupFinalized = raceState.assignedCount === 6;
-      
-      // Phase 1: Waiting for submissions to close
-      if (currentBlock < Number(raceState.submissionCloseBlock)) {
-        log('📝', `PHASE: Submission window open`);
-        await waitForBlock(raceState.submissionCloseBlock, 'submission window closing');
         continue;
       }
       
-      // Phase 2: Submissions closed, need to finalize
+      // ----------------------------------------
+      // Check if we can SETTLE now
+      // ----------------------------------------
+      if (actionability.canSettleNow) {
+        // Wait 1 extra block to ensure all RPC nodes are synced
+        log('🎯', 'ACTION: Contract says canSettleNow=true - waiting 1 block for RPC sync...');
+        await sleep(BLOCK_TIME_MS);
+        
+        log('🏆', 'Settling race...');
+        const success = await executeSettleRace();
+        if (success) {
+          await sleep(3000);
+        } else {
+          // If failed, wait a bit and retry
+          log('⏳', 'Settle failed, waiting before retry...');
+          await sleep(5000);
+        }
+        continue;
+      }
+      
+      // ----------------------------------------
+      // Neither action available - wait for the right time
+      // ----------------------------------------
+      const lineupFinalized = basic.assignedCount === 6;
+      
       if (!lineupFinalized) {
-        log('🎯', 'ACTION: Submission window closed - finalizing lineup');
-        await executeFinalizeRaceGiraffes();
-        await sleep(3000);
+        // Waiting for submission window to close + entropy block
+        const targetBlock = actionability.finalizeEntropyBlock || actionability.submissionCloseBlock;
+        const blocksToWait = targetBlock - currentBlock;
+        
+        if (blocksToWait > 0) {
+          log('📝', `PHASE: Waiting to finalize (target block: ${targetBlock})`);
+          const sleepBlocks = blocksToWait > 2 ? blocksToWait - 2 : 0;
+          if (sleepBlocks > 0) {
+            log('😴', `Sleeping ${formatDuration(blocksToMs(sleepBlocks))} (~${sleepBlocks} blocks)...`);
+            console.log('');
+            await sleep(blocksToMs(sleepBlocks));
+          } else {
+            await sleep(POLL_INTERVAL_MS);
+          }
+        } else {
+          // Should be able to finalize soon, poll
+          log('⏳', 'Waiting for finalize to become available...');
+          await sleep(POLL_INTERVAL_MS);
+        }
         continue;
       }
       
-      // Phase 3: Lineup finalized, waiting for betting to close
-      if (currentBlock < Number(raceState.bettingCloseBlock)) {
-        log('🎰', `PHASE: Betting window open`);
-        await waitForBlock(raceState.bettingCloseBlock, 'betting window closing');
-        continue;
-      }
+      // Lineup finalized, waiting for betting to close
+      const blocksToWait = actionability.bettingCloseBlock - currentBlock;
       
-      // Phase 4: Betting closed, need to settle
-      if (!raceState.settled) {
-        log('🎯', 'ACTION: Betting window closed - settling race');
-        await executeSettleRace();
-        await sleep(3000);
-        continue;
+      if (blocksToWait > 0) {
+        log('🎰', `PHASE: Betting window open (closes in ${blocksToWait} blocks)`);
+        const sleepBlocks = blocksToWait > 2 ? blocksToWait - 2 : 0;
+        if (sleepBlocks > 0) {
+          log('😴', `Sleeping ${formatDuration(blocksToMs(sleepBlocks))} (~${sleepBlocks} blocks)...`);
+          console.log('');
+          await sleep(blocksToMs(sleepBlocks));
+        } else {
+          await sleep(POLL_INTERVAL_MS);
+        }
+      } else {
+        // Betting closed, waiting for settle to become available
+        log('⏳', 'Waiting for settle to become available...');
+        await sleep(POLL_INTERVAL_MS);
       }
-      
-      // Fallback - shouldn't reach here
-      log('❓', 'Unknown state - sleeping briefly and retrying');
-      await sleep(5000);
       
     } catch (error) {
       log('❌', `Error in bot loop: ${error.message}`);
