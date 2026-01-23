@@ -5,12 +5,12 @@ export const config = {
   rpcUrl: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
   chainId: parseInt(process.env.CHAIN_ID || '8453'),
   
-  // Fallback RPC URLs (public endpoints - use env var for paid RPC)
+  // Fallback RPC URLs (ordered by reliability - use env var for paid RPC)
   fallbackRpcs: [
-    'https://mainnet.base.org',
-    'https://base.drpc.org',
+    'https://base.drpc.org',        // Most reliable public RPC
     'https://1rpc.io/base',
     'https://base.meowrpc.com',
+    'https://mainnet.base.org',     // Official but rate-limited
   ],
   
   // Contract addresses (Base Mainnet)
@@ -35,6 +35,8 @@ export const config = {
   // Bot settings
   bot: {
     pollIntervalMs: 3000, // Slightly longer than Base block time to reduce RPC load
+    presenceApiUrl: process.env.PRESENCE_API_URL || 'https://giraffe-race.vercel.app/api/presence',
+    presenceCheckIntervalMs: 5000, // Check for users every 5s when idle (fast response to visitors)
   },
 };
 

@@ -70,6 +70,7 @@ function logDivider() {
 
 const BLOCK_TIME_MS = 2000; // Base has ~2 second blocks
 const BUFFER_BLOCKS = 2;    // Wake up 2 blocks early to be ready
+const ACTIVE_POLL_MS = 2000; // Poll interval when actively waiting for target block
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -89,20 +90,41 @@ function formatDuration(ms) {
   return `${seconds}s`;
 }
 
-// Smart sleep - waits for blocks minus buffer, with a minimum wait
-async function sleepUntilBlock(targetBlock, currentBlock, reason) {
-  const blocksToWait = Number(targetBlock) - currentBlock - BUFFER_BLOCKS;
+// Wait for a specific block to be reached, sleeping long when far, polling when close
+async function waitForBlock(targetBlock, reason) {
+  const target = Number(targetBlock);
+  let currentBlock = await withRetry(() => provider.getBlockNumber());
+  let blocksLeft = target - currentBlock;
   
-  if (blocksToWait <= 0) {
-    return; // Already at or past target
+  // If we're far from target, do a long sleep first
+  if (blocksLeft > BUFFER_BLOCKS) {
+    const sleepBlocks = blocksLeft - BUFFER_BLOCKS;
+    const sleepMs = blocksToMs(sleepBlocks);
+    log('😴', `Sleeping ${formatDuration(sleepMs)} (~${sleepBlocks} blocks) - ${reason}`);
+    log('⏰', `Will wake at block ~${currentBlock + sleepBlocks} (target: ${target})`);
+    console.log('');
+    await sleep(sleepMs);
   }
   
-  const sleepMs = blocksToMs(blocksToWait);
-  log('😴', `Sleeping ${formatDuration(sleepMs)} (~${blocksToWait} blocks) - ${reason}`);
-  log('⏰', `Will wake at block ~${currentBlock + blocksToWait} (target: ${targetBlock})`);
-  console.log(''); // Blank line for readability
-  
-  await sleep(sleepMs);
+  // Now poll until we reach the target
+  let lastLoggedBlock = 0;
+  while (true) {
+    currentBlock = await withRetry(() => provider.getBlockNumber());
+    blocksLeft = target - currentBlock;
+    
+    if (currentBlock >= target) {
+      log('✅', `Reached target block ${target}`);
+      return currentBlock;
+    }
+    
+    // Only log once per block to avoid spam
+    if (currentBlock !== lastLoggedBlock) {
+      log('⏳', `Waiting for block ${target} (${blocksLeft} left) - ${reason}`);
+      lastLoggedBlock = currentBlock;
+    }
+    
+    await sleep(ACTIVE_POLL_MS);
+  }
 }
 
 // Retry wrapper for RPC calls with provider fallback
@@ -138,6 +160,41 @@ async function getWalletInfo() {
     address,
     balance: ethers.formatEther(balance),
   };
+}
+
+// ============================================================================
+// PRESENCE DETECTION
+// ============================================================================
+
+async function getActiveUsers() {
+  try {
+    const response = await fetch(config.bot.presenceApiUrl);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    return data.activeUsers || 0;
+  } catch (error) {
+    log('⚠️', `Failed to check presence API: ${error.message}`);
+    return 0; // Assume no users if API fails
+  }
+}
+
+// Wait until at least one user is active
+async function waitForActiveUsers() {
+  log('👀', 'No active users - waiting for someone to visit the site...');
+  
+  while (true) {
+    const activeUsers = await getActiveUsers();
+    
+    if (activeUsers > 0) {
+      log('🎉', `${activeUsers} active user(s) detected! Starting race...`);
+      return activeUsers;
+    }
+    
+    log('💤', `No users online. Checking again in ${config.bot.presenceCheckIntervalMs / 1000}s...`);
+    await sleep(config.bot.presenceCheckIntervalMs);
+  }
 }
 
 // ============================================================================
@@ -266,6 +323,7 @@ async function runBot() {
   log('🌐', `RPC Pool: ${config.fallbackRpcs.length} endpoints`);
   log('🔗', `Active RPC: ${config.fallbackRpcs[currentProviderIndex]}`);
   log('🧠', `Smart sleep enabled - will only poll when action is near`);
+  log('👥', `Presence API: ${config.bot.presenceApiUrl}`);
   
   logHeader('🔄 STARTING BOT LOOP');
   
@@ -285,16 +343,22 @@ async function runBot() {
       
       log('🔢', `Latest Race ID: ${latestRaceId ?? 'None'} | Can Create: ${canCreate ? '✅' : '❌'}`);
       
-      // CASE 1: No races exist - create first one
+      // CASE 1: No races exist - create first one (if users are active)
       if (!hasRaces) {
         if (canCreate) {
+          // Check if anyone is online before creating a race
+          const activeUsers = await getActiveUsers();
+          if (activeUsers === 0) {
+            await waitForActiveUsers();
+            continue; // Re-check state after users arrive
+          }
           log('🎯', 'ACTION: Creating first race');
           await executeCreateRace();
           await sleep(3000); // Brief pause after tx
           continue;
         } else {
           log('⏱️', `Cooldown: ${blocksRemaining} blocks until we can create`);
-          await sleepUntilBlock(cooldownEndsAtBlock, currentBlock, 'waiting for cooldown to end');
+          await waitForBlock(cooldownEndsAtBlock, 'cooldown ending');
           continue;
         }
       }
@@ -303,34 +367,41 @@ async function runBot() {
       const raceState = await getRaceState(latestRaceId);
       logRaceState(raceState, currentBlock);
       
-      // CASE 2a: Race is settled - create new one (if cooldown allows)
+      // CASE 2a: Race is settled - create new one (if cooldown allows AND users active)
       if (raceState.settled) {
         if (canCreate) {
+          // Check if anyone is online before creating a new race
+          const activeUsers = await getActiveUsers();
+          log('👥', `Active users: ${activeUsers}`);
+          
+          if (activeUsers === 0) {
+            await waitForActiveUsers();
+            continue; // Re-check state after users arrive
+          }
+          
           log('🎯', 'ACTION: Previous race settled - creating new race');
           await executeCreateRace();
           await sleep(3000);
           continue;
         } else {
           log('⏱️', `Cooldown: ${blocksRemaining} blocks remaining`);
-          await sleepUntilBlock(cooldownEndsAtBlock, currentBlock, 'waiting for cooldown after settled race');
+          await waitForBlock(cooldownEndsAtBlock, 'cooldown ending');
           continue;
         }
       }
       
       // CASE 2b: Race is active - determine what phase we're in
-      const submissionsClosed = currentBlock >= Number(raceState.submissionCloseBlock);
-      const bettingClosed = currentBlock >= Number(raceState.bettingCloseBlock);
       const lineupFinalized = raceState.assignedCount === 6;
       
       // Phase 1: Waiting for submissions to close
-      if (!submissionsClosed) {
+      if (currentBlock < Number(raceState.submissionCloseBlock)) {
         log('📝', `PHASE: Submission window open`);
-        await sleepUntilBlock(raceState.submissionCloseBlock, currentBlock, 'waiting for submission window to close');
+        await waitForBlock(raceState.submissionCloseBlock, 'submission window closing');
         continue;
       }
       
       // Phase 2: Submissions closed, need to finalize
-      if (submissionsClosed && !lineupFinalized) {
+      if (!lineupFinalized) {
         log('🎯', 'ACTION: Submission window closed - finalizing lineup');
         await executeFinalizeRaceGiraffes();
         await sleep(3000);
@@ -338,14 +409,14 @@ async function runBot() {
       }
       
       // Phase 3: Lineup finalized, waiting for betting to close
-      if (lineupFinalized && !bettingClosed) {
+      if (currentBlock < Number(raceState.bettingCloseBlock)) {
         log('🎰', `PHASE: Betting window open`);
-        await sleepUntilBlock(raceState.bettingCloseBlock, currentBlock, 'waiting for betting window to close');
+        await waitForBlock(raceState.bettingCloseBlock, 'betting window closing');
         continue;
       }
       
       // Phase 4: Betting closed, need to settle
-      if (lineupFinalized && bettingClosed && !raceState.settled) {
+      if (!raceState.settled) {
         log('🎯', 'ACTION: Betting window closed - settling race');
         await executeSettleRace();
         await sleep(3000);
