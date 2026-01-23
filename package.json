@@ -1,0 +1,22 @@
+{
+  "name": "giraffe-race-bot",
+  "version": "1.0.0",
+  "description": "Bot for interacting with Base Ethereum network",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": [
+    "ethereum",
+    "base",
+    "bot"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.4"
+  }
+}
