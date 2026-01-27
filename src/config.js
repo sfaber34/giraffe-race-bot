@@ -13,30 +13,37 @@ export const config = {
     'https://mainnet.base.org',     // Official but rate-limited
   ],
   
-  // Contract addresses (Base Mainnet)
-  contracts: {
-    giraffeRace: '0x9f9e34af1ee8429902056d33fb486bd23fbdc590',
-    giraffeNFT: '0xa67e746383dcc73f1bfe9144102274443d8bac4e',
-    houseTreasury: '0xc3134fd57f606d880b581d0a28bc92af8a0d4b66',
-    usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  // Contract address
+  giraffeRaceContract: '0x9f9e34af1ee8429902056d33fb486bd23fbdc590',
+  
+  // Privileged addresses
+  addresses: {
+    raceBot: '0xbA7106581320DCCF42189682EF35ab523f4D97D1',
+    treasuryOwner: '0x6935d26Ba98b86e07Bedf4FFBded0eA8a9eDD5Fb',
   },
   
-  // Race constants
+  // Race window constants (in blocks)
   race: {
     laneCount: 6,
-    submissionWindowBlocks: 30,
-    bettingWindowBlocks: 30,
-    postRaceCooldownBlocks: 30,
+    oddsWindowBlocks: 10,         // Time for bot to call setOdds() after createRace()
+    bettingWindowBlocks: 30,      // Time for users to place bets after odds are set
+    postRaceCooldownBlocks: 30,   // Wait period after settlement before next race
     trackLength: 1000,
     maxTicks: 500,
     speedRange: 10,
   },
   
+  // Monte Carlo settings
+  monteCarlo: {
+    samples: 50000,               // Number of simulations for probability calculation
+    // NOTE: House edge is applied ON-CHAIN, not by the bot
+  },
+  
   // Bot settings
   bot: {
-    pollIntervalMs: 3000, // Slightly longer than Base block time to reduce RPC load
+    pollIntervalMs: 2000,         // Poll interval when waiting (Base ~2s blocks)
     presenceApiUrl: process.env.PRESENCE_API_URL || 'https://giraffe-race.vercel.app/api/presence',
-    presenceCheckIntervalMs: 5000, // Check for users every 5s when idle (fast response to visitors)
+    presenceCheckIntervalMs: 5000, // Check for users every 5s when idle
   },
 };
 

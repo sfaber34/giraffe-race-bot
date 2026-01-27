@@ -2,7 +2,8 @@ import 'dotenv/config';
 import { ethers } from 'ethers';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import config from './config.js';
-import { GIRAFFE_RACE_ABI } from './abi.js';
+import { GIRAFFE_RACE_ABI, BOT_ACTION, BOT_ACTION_NAMES } from './abi.js';
+import { calculateProbabilities, formatProbabilitiesForLog } from './monte-carlo.js';
 
 // ============================================================================
 // SETUP & VALIDATION
@@ -25,7 +26,7 @@ let currentProviderIndex = 0;
 let provider = providers[currentProviderIndex];
 let wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 let giraffeRace = new ethers.Contract(
-  config.contracts.giraffeRace,
+  config.giraffeRaceContract,
   GIRAFFE_RACE_ABI,
   wallet
 );
@@ -36,7 +37,7 @@ function switchProvider() {
   provider = providers[currentProviderIndex];
   wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
   giraffeRace = new ethers.Contract(
-    config.contracts.giraffeRace,
+    config.giraffeRaceContract,
     GIRAFFE_RACE_ABI,
     wallet
   );
@@ -58,7 +59,7 @@ function loadGasTracking() {
   } catch (error) {
     log('⚠️', `Failed to load gas tracking file: ${error.message}`);
   }
-  return { races: {}, totals: { createRace: 0, finalizeLineup: 0, settleRace: 0, total: 0 } };
+  return { races: {}, totals: { createRace: 0, setOdds: 0, settleRace: 0, cancelRace: 0, total: 0 } };
 }
 
 function saveGasTracking(data) {
@@ -73,30 +74,30 @@ function trackGasUsage(raceId, transactionType, gasUsed, txHash) {
   const data = loadGasTracking();
   const raceKey = raceId.toString();
   
-  // Initialize race entry if doesn't exist
   if (!data.races[raceKey]) {
     data.races[raceKey] = {};
   }
   
-  // Store transaction data
   data.races[raceKey][transactionType] = {
     gasUsed: Number(gasUsed),
     txHash,
     timestamp: new Date().toISOString(),
   };
   
-  // Calculate total gas used for this race
+  // Calculate total gas for this race
   const raceData = data.races[raceKey];
   const raceTotalGas = 
     (raceData.createRace?.gasUsed || 0) + 
-    (raceData.finalizeLineup?.gasUsed || 0) + 
-    (raceData.settleRace?.gasUsed || 0);
+    (raceData.setOdds?.gasUsed || 0) + 
+    (raceData.settleRace?.gasUsed || 0) +
+    (raceData.cancelRace?.gasUsed || 0);
   
-  // Rebuild race object with correct order: createRace, finalizeLineup, settleRace, totalGasUsed
+  // Rebuild with correct order
   const orderedRaceData = {};
   if (raceData.createRace) orderedRaceData.createRace = raceData.createRace;
-  if (raceData.finalizeLineup) orderedRaceData.finalizeLineup = raceData.finalizeLineup;
+  if (raceData.setOdds) orderedRaceData.setOdds = raceData.setOdds;
   if (raceData.settleRace) orderedRaceData.settleRace = raceData.settleRace;
+  if (raceData.cancelRace) orderedRaceData.cancelRace = raceData.cancelRace;
   orderedRaceData.totalGasUsed = raceTotalGas;
   data.races[raceKey] = orderedRaceData;
   
@@ -119,8 +120,9 @@ function logGasSummary() {
   
   log('📊', `Gas Summary (${raceCount} races tracked):`);
   console.log(`    ├─ Create Race Total: ${data.totals.createRace?.toLocaleString() || 0} gas`);
-  console.log(`    ├─ Finalize Total: ${data.totals.finalizeLineup?.toLocaleString() || 0} gas`);
+  console.log(`    ├─ Set Odds Total: ${data.totals.setOdds?.toLocaleString() || 0} gas`);
   console.log(`    ├─ Settle Total: ${data.totals.settleRace?.toLocaleString() || 0} gas`);
+  console.log(`    ├─ Cancel Total: ${data.totals.cancelRace?.toLocaleString() || 0} gas`);
   console.log(`    └─ Grand Total: ${data.totals.total?.toLocaleString() || 0} gas`);
 }
 
@@ -150,8 +152,8 @@ function logDivider() {
 // HELPER FUNCTIONS
 // ============================================================================
 
-const BLOCK_TIME_MS = 2000; // Base has ~2 second blocks
-const POLL_INTERVAL_MS = 2000; // Poll interval when waiting
+const BLOCK_TIME_MS = 2000;
+const POLL_INTERVAL_MS = config.bot.pollIntervalMs;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -220,11 +222,10 @@ async function getActiveUsers() {
     return data.activeUsers || 0;
   } catch (error) {
     log('⚠️', `Failed to check presence API: ${error.message}`);
-    return 0; // Assume no users if API fails
+    return 0;
   }
 }
 
-// Wait until at least one user is active
 async function waitForActiveUsers() {
   log('👀', 'No active users - waiting for someone to visit the site...');
   
@@ -242,157 +243,99 @@ async function waitForActiveUsers() {
 }
 
 // ============================================================================
-// RACE STATE FUNCTIONS (using new ABI)
+// BOT DASHBOARD
 // ============================================================================
 
-async function getRaceActionability(raceId) {
-  const [
-    canFinalizeNow,
-    canSettleNow,
-    bettingCloseBlock,
-    submissionCloseBlock,
-    finalizeEntropyBlock,
-    finalizeBlockhashExpiresAt,
-    settleBlockhashExpiresAt,
-    blocksUntilFinalizeExpiry,
-    blocksUntilSettleExpiry
-  ] = await withRetry(() => giraffeRace.getRaceActionabilityById(raceId));
-
-  return {
-    canFinalizeNow,
-    canSettleNow,
-    bettingCloseBlock: Number(bettingCloseBlock),
-    submissionCloseBlock: Number(submissionCloseBlock),
-    finalizeEntropyBlock: Number(finalizeEntropyBlock),
-    finalizeBlockhashExpiresAt: Number(finalizeBlockhashExpiresAt),
-    settleBlockhashExpiresAt: Number(settleBlockhashExpiresAt),
-    blocksUntilFinalizeExpiry: Number(blocksUntilFinalizeExpiry),
-    blocksUntilSettleExpiry: Number(blocksUntilSettleExpiry),
-  };
-}
-
-async function getRaceBasicInfo(raceId) {
-  const [bettingCloseBlock, settled, winner, seed, totalPot, totalOnLane] = 
-    await withRetry(() => giraffeRace.getRaceById(raceId));
+/**
+ * Get the current bot action from the contract.
+ * @returns {{ action: number, raceId: bigint, blocksRemaining: number, scores: number[] }}
+ */
+async function getBotDashboard() {
+  const [action, raceId, blocksRemaining, scores] = await withRetry(() => 
+    giraffeRace.getBotDashboard()
+  );
   
-  const [assignedCount] = 
-    await withRetry(() => giraffeRace.getRaceGiraffesById(raceId));
-  
-  const entryCount = await withRetry(() => giraffeRace.getRaceEntryCount(raceId));
-
   return {
+    action: Number(action),
     raceId,
-    settled,
-    winner: Number(winner),
-    totalPot,
-    assignedCount: Number(assignedCount),
-    entryCount: Number(entryCount),
+    blocksRemaining: Number(blocksRemaining),
+    scores: scores.map(s => Number(s)),
   };
 }
 
-function logRaceState(basic, actionability, currentBlock) {
-  logDivider();
-  log('📊', `Race #${basic.raceId} State:`);
-  console.log(`    ├─ Settled: ${basic.settled ? '✅ Yes' : '❌ No'}`);
-  console.log(`    ├─ Giraffes Assigned: ${basic.assignedCount}/6`);
-  console.log(`    ├─ Entry Pool Size: ${basic.entryCount}`);
-  console.log(`    ├─ Total Pot: ${ethers.formatUnits(basic.totalPot, 6)} USDC`);
-  
-  if (basic.settled) {
-    console.log(`    └─ Winner: Lane ${basic.winner}`);
-  } else {
-    console.log(`    ├─ Can Finalize Now: ${actionability.canFinalizeNow ? '✅ YES' : '❌ No'}`);
-    console.log(`    ├─ Can Settle Now: ${actionability.canSettleNow ? '✅ YES' : '❌ No'}`);
-    
-    const subBlocksLeft = actionability.submissionCloseBlock - currentBlock;
-    const betBlocksLeft = actionability.bettingCloseBlock - currentBlock;
-    
-    if (subBlocksLeft > 0) {
-      console.log(`    ├─ Submission closes in: ${subBlocksLeft} blocks (~${formatDuration(blocksToMs(subBlocksLeft))})`);
-    }
-    if (betBlocksLeft > 0 && actionability.bettingCloseBlock > 0) {
-      console.log(`    ├─ Betting closes in: ${betBlocksLeft} blocks (~${formatDuration(blocksToMs(betBlocksLeft))})`);
-    }
-    if (actionability.blocksUntilFinalizeExpiry > 0) {
-      console.log(`    ├─ Finalize expires in: ${actionability.blocksUntilFinalizeExpiry} blocks`);
-    }
-    if (actionability.blocksUntilSettleExpiry > 0) {
-      console.log(`    └─ Settle expires in: ${actionability.blocksUntilSettleExpiry} blocks`);
-    }
-  }
-}
-
 // ============================================================================
-// TRANSACTION FUNCTIONS (with gas tracking)
+// TRANSACTION FUNCTIONS
 // ============================================================================
-
-// Track which race we're currently working on
-let currentRaceId = null;
 
 async function executeCreateRace() {
   log('🏁', 'Creating new race...');
   try {
-    // Get the race ID BEFORE creating - nextRaceId() tells us what ID will be assigned
-    // This avoids RPC sync delays that can cause latestRaceId() to return the wrong value
-    const newRaceId = await withRetry(() => giraffeRace.nextRaceId());
-    log('📋', `New race will be #${newRaceId}`);
-    
     const tx = await giraffeRace.createRace();
     log('📤', `Transaction sent: ${tx.hash}`);
     log('⏳', 'Waiting for confirmation...');
     
     const receipt = await tx.wait();
     const gasUsed = receipt.gasUsed.toString();
-    log('✅', `Race #${newRaceId} created! Gas used: ${gasUsed}`);
     
-    currentRaceId = newRaceId;
-    trackGasUsage(newRaceId, 'createRace', gasUsed, tx.hash);
+    // Get raceId from return value (parsed from logs/receipt)
+    // The contract returns raceId, but we need to decode it from the transaction
+    // For now, get it from dashboard on next iteration
+    const dashboard = await getBotDashboard();
+    const raceId = dashboard.raceId;
     
-    return { success: true, gasUsed, txHash: tx.hash };
+    log('✅', `Race #${raceId} created! Gas used: ${gasUsed}`);
+    trackGasUsage(raceId, 'createRace', gasUsed, tx.hash);
+    
+    return { success: true, raceId, gasUsed, txHash: tx.hash };
   } catch (error) {
     log('❌', `Failed to create race: ${error.message}`);
     return { success: false };
   }
 }
 
-async function executeFinalizeRaceGiraffes(raceId) {
-  log('🦒', 'Finalizing race giraffes (selecting lineup)...');
+async function executeSetOdds(raceId, scores) {
+  log('🎲', `Calculating probabilities for Race #${raceId}...`);
+  
   try {
-    const tx = await giraffeRace.finalizeRaceGiraffes();
+    // Run Monte Carlo simulation to get raw probabilities
+    // NOTE: House edge is applied ON-CHAIN, not here
+    const result = calculateProbabilities(scores, config.monteCarlo.samples);
+    
+    log('📊', `Probabilities calculated in ${result.elapsedMs}ms (${config.monteCarlo.samples.toLocaleString()} simulations)`);
+    console.log(formatProbabilitiesForLog(result));
+    
+    // Submit probabilities to contract (contract applies house edge to convert to odds)
+    log('📝', 'Submitting probabilities to contract...');
+    const tx = await giraffeRace.setOdds(raceId, result.winProbBps, result.placeProbBps, result.showProbBps);
     log('📤', `Transaction sent: ${tx.hash}`);
     log('⏳', 'Waiting for confirmation...');
     
     const receipt = await tx.wait();
     const gasUsed = receipt.gasUsed.toString();
-    log('✅', `Lineup finalized! Gas used: ${gasUsed}`);
+    log('✅', `Odds set for Race #${raceId}! Gas used: ${gasUsed}`);
     
-    // Track gas for this race
-    if (raceId) {
-      trackGasUsage(raceId, 'finalizeLineup', gasUsed, tx.hash);
-    }
+    trackGasUsage(raceId, 'setOdds', gasUsed, tx.hash);
     
-    return { success: true, gasUsed, txHash: tx.hash };
+    return { success: true, gasUsed, txHash: tx.hash, probabilities: result };
   } catch (error) {
-    log('❌', `Failed to finalize giraffes: ${error.message}`);
+    log('❌', `Failed to set odds: ${error.message}`);
     return { success: false };
   }
 }
 
 async function executeSettleRace(raceId) {
-  log('🏆', 'Settling race (determining winner)...');
+  log('🏆', `Settling Race #${raceId}...`);
   try {
+    // settleRace() takes no parameters - it settles the active race
     const tx = await giraffeRace.settleRace();
     log('📤', `Transaction sent: ${tx.hash}`);
     log('⏳', 'Waiting for confirmation...');
     
     const receipt = await tx.wait();
     const gasUsed = receipt.gasUsed.toString();
-    log('✅', `Race settled! Gas used: ${gasUsed}`);
+    log('✅', `Race #${raceId} settled! Gas used: ${gasUsed}`);
     
-    // Track gas for this race
-    if (raceId) {
-      trackGasUsage(raceId, 'settleRace', gasUsed, tx.hash);
-    }
+    trackGasUsage(raceId, 'settleRace', gasUsed, tx.hash);
     
     return { success: true, gasUsed, txHash: tx.hash };
   } catch (error) {
@@ -401,30 +344,18 @@ async function executeSettleRace(raceId) {
   }
 }
 
-// ============================================================================
-// SMART WAITING
-// ============================================================================
-
-// Wait for condition to be true, with smart sleeping
-async function waitForCondition(checkFn, getBlocksToWait, reason) {
-  while (true) {
-    const result = await checkFn();
-    if (result.ready) {
-      return result;
-    }
+async function executeCancelRace(raceId) {
+  log('🚫', `Cancelling Race #${raceId} (no odds set in time)...`);
+  try {
+    // Option 1: Explicitly cancel
+    // const tx = await giraffeRace.cancelRaceNoOdds(raceId);
     
-    const blocksToWait = getBlocksToWait(result);
-    if (blocksToWait > 2) {
-      // Sleep for most of the wait time
-      const sleepBlocks = blocksToWait - 2;
-      const sleepMs = blocksToMs(sleepBlocks);
-      log('😴', `Sleeping ${formatDuration(sleepMs)} (~${sleepBlocks} blocks) - ${reason}`);
-      console.log('');
-      await sleep(sleepMs);
-    } else {
-      // Close to ready, poll frequently
-      await sleep(POLL_INTERVAL_MS);
-    }
+    // Option 2: Just create a new race - it auto-cancels the expired one
+    log('🔄', 'Creating new race (auto-cancels expired race)...');
+    return await executeCreateRace();
+  } catch (error) {
+    log('❌', `Failed to cancel race: ${error.message}`);
+    return { success: false };
   }
 }
 
@@ -433,21 +364,26 @@ async function waitForCondition(checkFn, getBlocksToWait, reason) {
 // ============================================================================
 
 async function runBot() {
-  logHeader('🦒 GIRAFFE RACE BOT (Smart Mode v2)');
+  logHeader('🦒 GIRAFFE RACE BOT v3 (Dashboard Mode)');
   
   // Display startup info
   const walletInfo = await getWalletInfo();
   log('💰', `Wallet: ${walletInfo.address}`);
   log('💵', `Balance: ${walletInfo.balance} ETH`);
   log('📍', `Network: Base Mainnet (Chain ID: ${config.chainId})`);
-  log('📜', `Contract: ${config.contracts.giraffeRace}`);
+  log('📜', `Contract: ${config.giraffeRaceContract}`);
   log('🌐', `RPC Pool: ${config.fallbackRpcs.length} endpoints`);
   log('🔗', `Active RPC: ${config.fallbackRpcs[currentProviderIndex]}`);
   log('👥', `Presence API: ${config.bot.presenceApiUrl}`);
-  log('🧠', `Using canFinalizeNow/canSettleNow from contract - no more guessing!`);
+  log('🎲', `Monte Carlo: ${config.monteCarlo.samples.toLocaleString()} samples (house edge applied on-chain)`);
   log('💾', `Gas tracking file: ${GAS_TRACKING_FILE}`);
   
-  // Show existing gas summary
+  // Verify wallet is raceBot
+  if (walletInfo.address.toLowerCase() !== config.addresses.raceBot.toLowerCase()) {
+    log('⚠️', `WARNING: Wallet is not raceBot! Only ${config.addresses.raceBot} can call setOdds()`);
+    log('⚠️', `Current wallet: ${walletInfo.address}`);
+  }
+  
   logGasSummary();
   
   logHeader('🔄 STARTING BOT LOOP');
@@ -455,150 +391,105 @@ async function runBot() {
   while (true) {
     try {
       const currentBlock = await withRetry(() => provider.getBlockNumber());
-      log('📦', `Current Block: ${currentBlock}`);
+      const dashboard = await getBotDashboard();
       
-      // Check for active race
-      const activeRaceId = await withRetry(() => giraffeRace.getActiveRaceIdOrZero());
-      const hasActiveRace = activeRaceId > 0n;
+      logDivider();
+      log('📦', `Block: ${currentBlock} | Action: ${BOT_ACTION_NAMES[dashboard.action]} | Race: ${dashboard.raceId > 0n ? `#${dashboard.raceId}` : 'None'} | Blocks Remaining: ${dashboard.blocksRemaining}`);
       
-      // Get cooldown status
-      const [canCreate, blocksRemaining, cooldownEndsAtBlock] = 
-        await withRetry(() => giraffeRace.getCreateRaceCooldown());
-      
-      log('🔢', `Active Race: ${hasActiveRace ? `#${activeRaceId}` : 'None'} | Can Create: ${canCreate ? '✅' : '❌'}`);
-      
-      // ========================================
-      // CASE 1: No active race - create one
-      // ========================================
-      if (!hasActiveRace) {
-        if (!canCreate) {
-          // Wait for cooldown
-          log('⏱️', `Cooldown: ${blocksRemaining} blocks remaining (ends at ${cooldownEndsAtBlock})`);
-          const sleepBlocks = Number(blocksRemaining) > 2 ? Number(blocksRemaining) - 2 : 0;
-          if (sleepBlocks > 0) {
-            log('😴', `Sleeping ${formatDuration(blocksToMs(sleepBlocks))} until cooldown ends...`);
-            console.log('');
-            await sleep(blocksToMs(sleepBlocks));
+      switch (dashboard.action) {
+        // ========================================
+        // CASE 0: Nothing to do - wait
+        // ========================================
+        case BOT_ACTION.NONE: {
+          if (dashboard.blocksRemaining > 0) {
+            const waitMs = blocksToMs(dashboard.blocksRemaining);
+            log('😴', `Waiting ${formatDuration(waitMs)} (~${dashboard.blocksRemaining} blocks)...`);
+            // Sleep for most of the time, but leave a buffer
+            const sleepBlocks = Math.max(0, dashboard.blocksRemaining - 2);
+            if (sleepBlocks > 0) {
+              await sleep(blocksToMs(sleepBlocks));
+            } else {
+              await sleep(POLL_INTERVAL_MS);
+            }
           } else {
             await sleep(POLL_INTERVAL_MS);
           }
-          continue;
+          break;
         }
         
-        // Check if anyone is online before creating a race
-        const activeUsers = await getActiveUsers();
-        log('👥', `Active users: ${activeUsers}`);
-        
-        if (activeUsers === 0) {
-          await waitForActiveUsers();
-          continue; // Re-check state after users arrive
-        }
-        
-        log('🎯', 'ACTION: Creating new race');
-        await executeCreateRace();
-        await sleep(3000);
-        continue;
-      }
-      
-      // ========================================
-      // CASE 2: Active race exists - manage it
-      // ========================================
-      const basic = await getRaceBasicInfo(activeRaceId);
-      const actionability = await getRaceActionability(activeRaceId);
-      logRaceState(basic, actionability, currentBlock);
-      
-      // Race is settled - shouldn't happen if getActiveRaceIdOrZero works correctly
-      if (basic.settled) {
-        log('✅', 'Race already settled, checking for next action...');
-        await sleep(3000);
-        continue;
-      }
-      
-      // ----------------------------------------
-      // Check if we can FINALIZE now
-      // ----------------------------------------
-      if (actionability.canFinalizeNow) {
-        // Wait 1 extra block to ensure all RPC nodes are synced
-        log('🎯', 'ACTION: Contract says canFinalizeNow=true - waiting 1 block for RPC sync...');
-        await sleep(BLOCK_TIME_MS);
-        
-        log('🦒', 'Finalizing lineup...');
-        const result = await executeFinalizeRaceGiraffes(activeRaceId);
-        if (result.success) {
-          await sleep(3000);
-        } else {
-          // If failed, wait a bit and retry
-          log('⏳', 'Finalize failed, waiting before retry...');
-          await sleep(5000);
-        }
-        continue;
-      }
-      
-      // ----------------------------------------
-      // Check if we can SETTLE now
-      // ----------------------------------------
-      if (actionability.canSettleNow) {
-        // Wait 1 extra block to ensure all RPC nodes are synced
-        log('🎯', 'ACTION: Contract says canSettleNow=true - waiting 1 block for RPC sync...');
-        await sleep(BLOCK_TIME_MS);
-        
-        log('🏆', 'Settling race...');
-        const result = await executeSettleRace(activeRaceId);
-        if (result.success) {
-          await sleep(3000);
-        } else {
-          // If failed, wait a bit and retry
-          log('⏳', 'Settle failed, waiting before retry...');
-          await sleep(5000);
-        }
-        continue;
-      }
-      
-      // ----------------------------------------
-      // Neither action available - wait for the right time
-      // ----------------------------------------
-      const lineupFinalized = basic.assignedCount === 6;
-      
-      if (!lineupFinalized) {
-        // Waiting for submission window to close + entropy block
-        const targetBlock = actionability.finalizeEntropyBlock || actionability.submissionCloseBlock;
-        const blocksToWait = targetBlock - currentBlock;
-        
-        if (blocksToWait > 0) {
-          log('📝', `PHASE: Waiting to finalize (target block: ${targetBlock})`);
-          const sleepBlocks = blocksToWait > 2 ? blocksToWait - 2 : 0;
-          if (sleepBlocks > 0) {
-            log('😴', `Sleeping ${formatDuration(blocksToMs(sleepBlocks))} (~${sleepBlocks} blocks)...`);
-            console.log('');
-            await sleep(blocksToMs(sleepBlocks));
-          } else {
-            await sleep(POLL_INTERVAL_MS);
+        // ========================================
+        // CASE 1: Create a new race
+        // ========================================
+        case BOT_ACTION.CREATE_RACE: {
+          // Check if anyone is online before creating a race
+          const activeUsers = await getActiveUsers();
+          log('👥', `Active users: ${activeUsers}`);
+          
+          if (activeUsers === 0) {
+            await waitForActiveUsers();
+            continue;
           }
-        } else {
-          // Should be able to finalize soon, poll
-          log('⏳', 'Waiting for finalize to become available...');
-          await sleep(POLL_INTERVAL_MS);
+          
+          log('🎯', 'ACTION: Create new race');
+          const result = await executeCreateRace();
+          if (result.success) {
+            await sleep(3000);
+          } else {
+            await sleep(5000);
+          }
+          break;
         }
-        continue;
-      }
-      
-      // Lineup finalized, waiting for betting to close
-      const blocksToWait = actionability.bettingCloseBlock - currentBlock;
-      
-      if (blocksToWait > 0) {
-        log('🎰', `PHASE: Betting window open (closes in ${blocksToWait} blocks)`);
-        const sleepBlocks = blocksToWait > 2 ? blocksToWait - 2 : 0;
-        if (sleepBlocks > 0) {
-          log('😴', `Sleeping ${formatDuration(blocksToMs(sleepBlocks))} (~${sleepBlocks} blocks)...`);
-          console.log('');
-          await sleep(blocksToMs(sleepBlocks));
-        } else {
-          await sleep(POLL_INTERVAL_MS);
+        
+        // ========================================
+        // CASE 2: Calculate and set odds
+        // ========================================
+        case BOT_ACTION.SET_ODDS: {
+          log('🎯', `ACTION: Set odds for Race #${dashboard.raceId}`);
+          log('🦒', `Scores: [${dashboard.scores.join(', ')}]`);
+          log('⏰', `Deadline: ${dashboard.blocksRemaining} blocks remaining`);
+          
+          const result = await executeSetOdds(dashboard.raceId, dashboard.scores);
+          if (result.success) {
+            await sleep(3000);
+          } else {
+            // Failed to set odds - will need to cancel if time runs out
+            log('⚠️', 'Failed to set odds - will retry...');
+            await sleep(2000);
+          }
+          break;
         }
-      } else {
-        // Betting closed, waiting for settle to become available
-        log('⏳', 'Waiting for settle to become available...');
-        await sleep(POLL_INTERVAL_MS);
+        
+        // ========================================
+        // CASE 3: Settle the race
+        // ========================================
+        case BOT_ACTION.SETTLE_RACE: {
+          log('🎯', `ACTION: Settle Race #${dashboard.raceId}`);
+          const result = await executeSettleRace(dashboard.raceId);
+          if (result.success) {
+            await sleep(3000);
+          } else {
+            await sleep(5000);
+          }
+          break;
+        }
+        
+        // ========================================
+        // CASE 4: Cancel expired race
+        // ========================================
+        case BOT_ACTION.CANCEL_RACE: {
+          log('🎯', `ACTION: Cancel Race #${dashboard.raceId} (odds window expired)`);
+          const result = await executeCancelRace(dashboard.raceId);
+          if (result.success) {
+            await sleep(3000);
+          } else {
+            await sleep(5000);
+          }
+          break;
+        }
+        
+        default:
+          log('❓', `Unknown action: ${dashboard.action}`);
+          await sleep(POLL_INTERVAL_MS);
       }
       
     } catch (error) {
@@ -613,7 +504,7 @@ async function runBot() {
 // ENTRY POINT
 // ============================================================================
 
-log('🚀', 'Initializing Giraffe Race Bot...');
+log('🚀', 'Initializing Giraffe Race Bot v3...');
 
 runBot().catch((error) => {
   log('💥', `Fatal error: ${error.message}`);
