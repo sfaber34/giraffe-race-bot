@@ -22,11 +22,6 @@ export const config = {
   // Contract address (set via env var for local testing)
   giraffeRaceContract: process.env.GIRAFFE_RACE_CONTRACT || '0x9f9e34af1ee8429902056d33fb486bd23fbdc590',
   
-  // Privileged addresses (set via env var for local testing)
-  addresses: {
-    raceBot: process.env.RACE_BOT_ADDRESS || '0xbA7106581320DCCF42189682EF35ab523f4D97D1',
-  },
-  
   // Race window constants (in blocks)
   race: {
     laneCount: 6,

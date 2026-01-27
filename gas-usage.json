@@ -1,46 +1,757 @@
 {
   "races": {
-    "32": {
+    "0": {
       "createRace": {
-        "gasUsed": 57397,
-        "txHash": "0xd584351e50f4ed9a991bbeda7507c6b471c441526bad4cb1e928622eb07eae19",
-        "timestamp": "2026-01-24T00:23:15.191Z"
+        "gasUsed": 519390,
+        "txHash": "0xa9a45a69b60908ad8953bd4b725f687e8beaefce341ff4446905c27540ef0914",
+        "timestamp": "2026-01-27T19:39:26.199Z"
       },
-      "finalizeLineup": {
-        "gasUsed": 667160,
-        "txHash": "0xfbe40b79d304e01fafa2b2ebff43007b74566ff49d89cebd23ea383f09930655",
-        "timestamp": "2026-01-24T00:24:20.089Z"
+      "setProbabilities": {
+        "gasUsed": 126455,
+        "txHash": "0xd0f2c0f8c9f9f053b15310a6302cd02933ba52a5a480cf913d7d654ab8f94220",
+        "timestamp": "2026-01-27T19:39:34.978Z"
       },
       "settleRace": {
-        "gasUsed": 7264267,
-        "txHash": "0x069ccef7be15e642c56244bfce648270b4f050e7ada5bb2959eeb32125ec82cc",
-        "timestamp": "2026-01-24T00:25:27.799Z"
+        "gasUsed": 1415175,
+        "txHash": "0x4b022004b26159ec4563eb403be3b243a5d910ac0fb6f5434ac981f70841363e",
+        "timestamp": "2026-01-27T19:40:38.274Z"
       },
-      "totalGasUsed": 7988824
+      "totalGasUsed": 2061020
+    },
+    "1": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x5e93458321d19555031b48a3ade93bba9de0691dbb38524c4282a7a5acadd78e",
+        "timestamp": "2026-01-27T19:41:41.529Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x0f7b4e22d4d3c20fafd04dca4e55140e42886c9d961ec9deb8a2c1edf3525ec9",
+        "timestamp": "2026-01-27T19:41:50.236Z"
+      },
+      "settleRace": {
+        "gasUsed": 1531663,
+        "txHash": "0xace9bf3358304694061fdb82e1c3cd553bab6588ceb9f814c8bb485d56afe3a7",
+        "timestamp": "2026-01-27T19:42:55.530Z"
+      },
+      "totalGasUsed": 2162861
+    },
+    "2": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x2f85417ca6d67a0500a9336e1c530f4def3925f43aacfdb911488fd823593881",
+        "timestamp": "2026-01-27T19:45:41.958Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x7524af11a0c8b71b5217c6090e9f269f5a0cd18d09f15c49653aa42d93143301",
+        "timestamp": "2026-01-27T19:45:50.277Z"
+      },
+      "settleRace": {
+        "gasUsed": 1093952,
+        "txHash": "0x138150ba915ff4b9d9a2d925064ec43c195e6eee39adedc131142b90633aa090",
+        "timestamp": "2026-01-27T19:46:55.568Z"
+      },
+      "totalGasUsed": 1725150
+    },
+    "3": {
+      "createRace": {
+        "gasUsed": 540840,
+        "txHash": "0x53ba81eaf3083fb84c54c12a8694ab02e2da8656ef90cc29fbf791c118212d2f",
+        "timestamp": "2026-01-27T19:18:40.876Z"
+      },
+      "totalGasUsed": 540840
+    },
+    "4": {
+      "createRace": {
+        "gasUsed": 540862,
+        "txHash": "0xb4f8b9eae50866c87859287241280d9f5e4a38410252de778a98d9fca8b67733",
+        "timestamp": "2026-01-27T19:48:28.436Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x38094210df67abd798fc517e5c393ec9b98a6dd39d816feff4fb8a74ef1cbc05",
+        "timestamp": "2026-01-27T19:48:36.687Z"
+      },
+      "settleRace": {
+        "gasUsed": 1129793,
+        "txHash": "0x8698bcafb754d61e2170905047dd5eaddd9b46ecbd5464154e647bd6170e91e0",
+        "timestamp": "2026-01-27T19:49:39.983Z"
+      },
+      "totalGasUsed": 1797134
+    },
+    "5": {
+      "createRace": {
+        "gasUsed": 530910,
+        "txHash": "0x1b2ec4e651861075e9f8f326317df8f3cb55368774f4ec575c6cd23551926149",
+        "timestamp": "2026-01-27T19:50:43.224Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x92f1ae4a69adc2bf890a32874a7a53abe6370fba19b0d9056f05fb033a41d045",
+        "timestamp": "2026-01-27T19:50:51.589Z"
+      },
+      "settleRace": {
+        "gasUsed": 1155514,
+        "txHash": "0xf1c062d24cd3f15bb4ecd00ca4ba1d963dded8f369e8418f27b4d82c155b7007",
+        "timestamp": "2026-01-27T19:51:56.886Z"
+      },
+      "totalGasUsed": 1812903
+    },
+    "6": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x9bcb355684da65aab1a1be3e43923ba6b65e0ac27406f502a89b860efd6b0e33",
+        "timestamp": "2026-01-27T19:52:59.310Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xe110c2d91376bf144ec89f443eb7181d5051d5a355158e3ab152dc9080019810",
+        "timestamp": "2026-01-27T19:53:07.690Z"
+      },
+      "settleRace": {
+        "gasUsed": 1168128,
+        "txHash": "0xd601fb6b9f59f740310817ef2803fc0d974938b53415dd7057324c4aebf0af27",
+        "timestamp": "2026-01-27T19:54:12.977Z"
+      },
+      "totalGasUsed": 1799326
+    },
+    "7": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x77c44256ac69aef79c2b367222aa1925e96e46bcdcfc2571f0b0d8b71e2354d3",
+        "timestamp": "2026-01-27T19:55:14.226Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x956a0bc2a0ab2eb36da3ea3fea1bb60858e97446da8cb2fcd03b89301424f73d",
+        "timestamp": "2026-01-27T19:55:22.601Z"
+      },
+      "settleRace": {
+        "gasUsed": 1179097,
+        "txHash": "0x8a7875f8cc5c5ea77fd332bff42a38f911080568cae2fc6f42851a4fc869b737",
+        "timestamp": "2026-01-27T19:56:25.881Z"
+      },
+      "totalGasUsed": 1810295
+    },
+    "8": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xe50e154ebffe29984cda215ec7087f04f22eb12fdeb7be2c40f19ed35d8e6dc9",
+        "timestamp": "2026-01-27T19:57:29.144Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xefa097702d36b373cba629d773c4a244be423c9161a37187fa6d8b81100217b2",
+        "timestamp": "2026-01-27T19:57:37.451Z"
+      },
+      "settleRace": {
+        "gasUsed": 1223245,
+        "txHash": "0xfae5a99c7f220e7229e6b375cda2c812bbd750d43f91e25516bf25aa02b55e0a",
+        "timestamp": "2026-01-27T19:58:40.750Z"
+      },
+      "totalGasUsed": 1854443
+    },
+    "9": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x14ef8562a04d9537b7e4e3daceb3e294200993807815f17c8d45642732314d15",
+        "timestamp": "2026-01-27T19:59:41.992Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x1d211a89f6f94cb52cf71819ee8f48d99603b3a35a753fcb4bb3e94c8facc030",
+        "timestamp": "2026-01-27T19:59:50.309Z"
+      },
+      "settleRace": {
+        "gasUsed": 1209933,
+        "txHash": "0x8aa818b8c35f083767ba47244192ad54d7a5f2f6f0e5004a9738833020b075ab",
+        "timestamp": "2026-01-27T20:00:55.599Z"
+      },
+      "totalGasUsed": 1841131
+    },
+    "10": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x0120a8e088320ea5ee50c086716e0c4b6f612291a00ac713e5661d230bab5aa3",
+        "timestamp": "2026-01-27T20:01:58.857Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xeb55889733bb881430d7f63086a5057bf81ebf545f8a84e6b252b390ce0742c4",
+        "timestamp": "2026-01-27T20:02:07.223Z"
+      },
+      "settleRace": {
+        "gasUsed": 1216479,
+        "txHash": "0x7653f4256b61fd767a016b7536eaae11ecd44fd84ae6e3146673489f2e442c22",
+        "timestamp": "2026-01-27T20:03:10.504Z"
+      },
+      "totalGasUsed": 1847677
+    },
+    "11": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xe52115dd7461fc423be6787e07e28331e198da67eb5a833e88571a2de749baf1",
+        "timestamp": "2026-01-27T20:04:11.743Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xfb1437f64192311b949bcd579724bd011dba2ee77a2047f255676201bfd63285",
+        "timestamp": "2026-01-27T20:04:20.089Z"
+      },
+      "settleRace": {
+        "gasUsed": 1235099,
+        "txHash": "0xdc505e253d75a3410f3731a4db53ae00ff24c5f60a4b12c5ac7dcb6970fe87aa",
+        "timestamp": "2026-01-27T20:05:25.384Z"
+      },
+      "totalGasUsed": 1866297
+    },
+    "12": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x1171898b8f4c2d1319af2b8c59da536b1fbbc5a641bdbc4089b43e5e24587dd4",
+        "timestamp": "2026-01-27T20:06:26.629Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x44df4aed8e0b32052bcd1f3e6feb122e22457fb732a0895a4d88bd7346331b25",
+        "timestamp": "2026-01-27T20:06:34.924Z"
+      },
+      "settleRace": {
+        "gasUsed": 1143159,
+        "txHash": "0x1aefc508e816afa4220613234c80eb03008ed8880cd31870ed48e945c4752aa7",
+        "timestamp": "2026-01-27T20:07:38.215Z"
+      },
+      "totalGasUsed": 1774357
+    },
+    "13": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xd0dee9e03413361d2732e11801a9cbbb349bbe836a7589b9bb24171685aae938",
+        "timestamp": "2026-01-27T20:08:41.458Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xc2905b327d95145b55f9cc8195c47b67610891a05ef2ca75944e7149800ae0d0",
+        "timestamp": "2026-01-27T20:08:49.703Z"
+      },
+      "settleRace": {
+        "gasUsed": 1186328,
+        "txHash": "0xf7322360d098f2af32218c86ab85f520a48166a2e563c23ce8c60c69ac4a0036",
+        "timestamp": "2026-01-27T20:09:54.995Z"
+      },
+      "totalGasUsed": 1817526
+    },
+    "14": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xb8d56d0bad3179e4403cb9a69535056b249a8c0cfc31556cc302dac616221af2",
+        "timestamp": "2026-01-27T20:10:56.231Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x778f9683683b0749611ea2b1793ca5656c555ad7b097349a1fff5ef3f3064852",
+        "timestamp": "2026-01-27T20:11:04.533Z"
+      },
+      "settleRace": {
+        "gasUsed": 1209245,
+        "txHash": "0x4e4a03514c0a0472132fae1cf4bf523408f7c497801fb5a3c83c77e6c38fd0a0",
+        "timestamp": "2026-01-27T20:12:07.805Z"
+      },
+      "totalGasUsed": 1840443
+    },
+    "15": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xf39a3691b2b3a4ee59a613382374b4a09bcb2bd3273705bd23baf4f0c6c41434",
+        "timestamp": "2026-01-27T20:13:11.074Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x820d2beee03c17c6d2ecde206dc4fd256c9b37da5586def8ad17ffa8718b48ce",
+        "timestamp": "2026-01-27T20:13:19.381Z"
+      },
+      "settleRace": {
+        "gasUsed": 1214039,
+        "txHash": "0x1420d4a3742e6d13d1d2ce16a254203b318345e7e8daa0d51119065f43a7fb47",
+        "timestamp": "2026-01-27T20:14:22.720Z"
+      },
+      "totalGasUsed": 1845237
+    },
+    "16": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xc1b2919730e7eda16dd1b692c3b0cb681c75282bdb82a8692c2524f90dbd6649",
+        "timestamp": "2026-01-27T20:15:23.977Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126467,
+        "txHash": "0xf22452dde4544cc3ff7b63e43ea5d0f5a15f55f3065da4c67db85b2575913a40",
+        "timestamp": "2026-01-27T20:15:32.335Z"
+      },
+      "settleRace": {
+        "gasUsed": 1198019,
+        "txHash": "0x539514e6ba89123721967b87cdfa3d806c20d23b77a6bb712fc83683005a162f",
+        "timestamp": "2026-01-27T20:16:37.629Z"
+      },
+      "totalGasUsed": 1829205
+    },
+    "17": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x7f643a3e5cfd3a5c003536505dcbf02d6fe84ee19134b85576202fc788374bab",
+        "timestamp": "2026-01-27T20:17:40.883Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x0e6f318ca4e38b1923592f1018f156a99ec2d6d4b5e9065098cfd8e40d98d350",
+        "timestamp": "2026-01-27T20:17:49.223Z"
+      },
+      "settleRace": {
+        "gasUsed": 1213791,
+        "txHash": "0x7982178580073680fa87b8f4a963192e75e42bd956de1e9f60e86d8c9d42a544",
+        "timestamp": "2026-01-27T20:18:52.499Z"
+      },
+      "totalGasUsed": 1844989
+    },
+    "18": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xf1fc3af19db6125d8c3a6b2f8991aa794142a83d4e600b772f41ce62457f243e",
+        "timestamp": "2026-01-27T20:19:53.724Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xc4095c4c2e5dd64c16721400ea2feb15141fa4f5b10346b71225507f67ae1d36",
+        "timestamp": "2026-01-27T20:20:02.063Z"
+      },
+      "settleRace": {
+        "gasUsed": 1174204,
+        "txHash": "0xaddc62d8a8218a0f70e373acb67ae3b9f5755dee9482443c892fcaced1e0ca75",
+        "timestamp": "2026-01-27T20:21:07.370Z"
+      },
+      "totalGasUsed": 1805402
+    },
+    "19": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x0abe361ab7d578fffa05c8bdf5041a932b2e25fbd877c9047c3406c762299352",
+        "timestamp": "2026-01-27T20:22:08.626Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x718f2c154daf1ca49d180ee4bf8740d4c6387c44975ec025e9e78c083202a373",
+        "timestamp": "2026-01-27T20:22:16.983Z"
+      },
+      "settleRace": {
+        "gasUsed": 1164871,
+        "txHash": "0xa11d5579159efa519d2de0b9a5d9a7137f1681b22476ae680cb658b4bfc83aa4",
+        "timestamp": "2026-01-27T20:23:20.284Z"
+      },
+      "totalGasUsed": 1796069
+    },
+    "20": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x7f73bc3445a0b366095c244bcff02f95206843cacd6be8ae918c40adadf7bb6c",
+        "timestamp": "2026-01-27T20:24:23.541Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xb5d4b28bb89f74aa7c733a921d240c4adad054fdf93752fd0ee2a1012045e269",
+        "timestamp": "2026-01-27T20:24:31.875Z"
+      },
+      "settleRace": {
+        "gasUsed": 1156506,
+        "txHash": "0x47bff49f66efdcdc39e2dc83b2f9f586c725d287b0a7b12860c5a6cf5014784c",
+        "timestamp": "2026-01-27T20:25:37.173Z"
+      },
+      "totalGasUsed": 1787704
+    },
+    "21": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x1c1dbc0625089f6e28da9eec5ecb1b3ae5221ee6bca26805bca0124b65a9e3f4",
+        "timestamp": "2026-01-27T20:26:38.429Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x7e601f4ccb3a299805d0b3365a787f43badc62bac75c01c9bf2d16eff48b54f8",
+        "timestamp": "2026-01-27T20:26:46.808Z"
+      },
+      "settleRace": {
+        "gasUsed": 1206032,
+        "txHash": "0xaea6da0acd5b656ac2ef6c834cb4ab0335a25c1ea34e18b3937dbc4bdb515611",
+        "timestamp": "2026-01-27T20:27:50.127Z"
+      },
+      "totalGasUsed": 1837230
+    },
+    "22": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x26c22ef29775d8e713739ec3da3b275f66a1d2e0e8d034d825c9d1c49037312a",
+        "timestamp": "2026-01-27T20:28:53.377Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xcbf5a24d3d0c5bb2bc4e698b291f96b88b92c855a6c41a5fcf39032d1a5478ab",
+        "timestamp": "2026-01-27T20:29:01.684Z"
+      },
+      "settleRace": {
+        "gasUsed": 1120992,
+        "txHash": "0xdd8f3817d56e13e4b6edad8061245b5a109de4cefea2765f98c36df22b63992a",
+        "timestamp": "2026-01-27T20:30:06.989Z"
+      },
+      "totalGasUsed": 1752190
+    },
+    "23": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x58f07651a5f7ebe697400ae991cd9fb93bc3bf1b5d829b2ff4919cf373225561",
+        "timestamp": "2026-01-27T20:31:08.246Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xa39b46bd67b89ffdd21ff7ef33a52cb17e71068690cac201c1400345183fa7f6",
+        "timestamp": "2026-01-27T20:31:16.600Z"
+      },
+      "settleRace": {
+        "gasUsed": 1186079,
+        "txHash": "0x917a5b812a7f29cc8457d0957242644bf2665e1968564d2953240628c1f293ad",
+        "timestamp": "2026-01-27T20:32:19.895Z"
+      },
+      "totalGasUsed": 1817277
+    },
+    "24": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x2eba230e29d37e7467bb6527125b2263f704a0b9e36524bdee4662cc0a262195",
+        "timestamp": "2026-01-27T20:33:23.165Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xfde9df7fae55dfc00f333c56691f17d0a4f6cab85ad6475c16a53aedac3399b2",
+        "timestamp": "2026-01-27T20:33:31.495Z"
+      },
+      "settleRace": {
+        "gasUsed": 1180190,
+        "txHash": "0xece43a16313c11e435557edeb00fb4f5dec4b2b632545b2f111876387b2ad73d",
+        "timestamp": "2026-01-27T20:34:34.794Z"
+      },
+      "totalGasUsed": 1811388
+    },
+    "25": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x047e9b91b550b1e0e007f833c5890d7abd2501afd69f398965859055eeb7011b",
+        "timestamp": "2026-01-27T20:35:36.043Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x4b51383cab00bc9f871e3c024140333e754e49fede58711f9920d93b6adde3bf",
+        "timestamp": "2026-01-27T20:35:44.357Z"
+      },
+      "settleRace": {
+        "gasUsed": 1247888,
+        "txHash": "0x4ff4951c0be5a64419adf767ff8a173b960c5b782017c3ea864863011bc8f96a",
+        "timestamp": "2026-01-27T20:36:49.666Z"
+      },
+      "totalGasUsed": 1879086
+    },
+    "26": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xa6974d93cde71d76354bc75b2cb156995a36471198c246ff76494dbbb7bada54",
+        "timestamp": "2026-01-27T20:37:52.926Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xfd6b51f72cc959966f50f2dfbc86a73e391bf92defda6e596ef67304d23eec2f",
+        "timestamp": "2026-01-27T20:38:01.264Z"
+      },
+      "settleRace": {
+        "gasUsed": 1185417,
+        "txHash": "0x4e731ec475f5ce8ffe06e4191267562c70eb7ae39877f7b030fbbc88bffc72fd",
+        "timestamp": "2026-01-27T20:39:04.579Z"
+      },
+      "totalGasUsed": 1816615
+    },
+    "27": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x988f4160e5a70364064afe06adce15648b1b4f5d29330603ed06770e4d5ec5a6",
+        "timestamp": "2026-01-27T20:40:05.806Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xe71bb2470ac7d593ec93b193205d8a879e90a1d19612a86de3eb95a081912139",
+        "timestamp": "2026-01-27T20:40:14.196Z"
+      },
+      "settleRace": {
+        "gasUsed": 1177945,
+        "txHash": "0x941da03b2314d3ea97f116319cbbaf7be1a11ace7d0716de84e09b3676631f0b",
+        "timestamp": "2026-01-27T20:41:19.473Z"
+      },
+      "totalGasUsed": 1809143
+    },
+    "28": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xceabd0a613a8d218a1693d1da005b590b2365334954a55962a653b83da8a2daf",
+        "timestamp": "2026-01-27T20:42:20.703Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126467,
+        "txHash": "0x2a3c8de5c8da9f3361e405f57d4bcf673465b6cb5b7cf3d22b953c107ce33bed",
+        "timestamp": "2026-01-27T20:42:29.032Z"
+      },
+      "settleRace": {
+        "gasUsed": 1208192,
+        "txHash": "0x1e4cc93b1ff546bc996106855ec24f52e75854e66dfadf819a90a959bb4556a2",
+        "timestamp": "2026-01-27T20:43:32.316Z"
+      },
+      "totalGasUsed": 1839378
+    },
+    "29": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xa6662a9fb1d54a6fbea510cfcde84f6a7595ed2ad3b22f4a156d791eb2ee91ab",
+        "timestamp": "2026-01-27T20:44:35.566Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126467,
+        "txHash": "0x29329814d69eb6d0db571603dbd79c24fafd05cd7aff0af0599d3d793794693b",
+        "timestamp": "2026-01-27T20:44:43.891Z"
+      },
+      "settleRace": {
+        "gasUsed": 1131361,
+        "txHash": "0x64b68bd795c1284c5ccf429eb30a9b89562965effea6cfbd0192fd59574af85a",
+        "timestamp": "2026-01-27T20:45:49.184Z"
+      },
+      "totalGasUsed": 1762547
+    },
+    "30": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xca7e33ee7ee015ebd7eae6b0e80ef7cd0ee463f93f56fea00db8b85caa753c48",
+        "timestamp": "2026-01-27T20:46:50.437Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xb28e01cfcb4a3fb8cec4f91e42c30c5533d4b244783598c632c54bd369087e40",
+        "timestamp": "2026-01-27T20:46:58.737Z"
+      },
+      "settleRace": {
+        "gasUsed": 1188306,
+        "txHash": "0x687aa3e619232c60ccffc15a5194317fd84f81978fb571e080382b8a6a6e6bff",
+        "timestamp": "2026-01-27T20:48:02.047Z"
+      },
+      "totalGasUsed": 1819504
+    },
+    "31": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xc3b083ba275edc230a8713ae0da1f516bd87b1b112bcc9608829dfa206f5aa8f",
+        "timestamp": "2026-01-27T20:49:05.299Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126455,
+        "txHash": "0x1feaf40eeb660bf18690fd08ead9236c02c6125b32023e8d2d592f6927c2d123",
+        "timestamp": "2026-01-27T20:49:13.660Z"
+      },
+      "settleRace": {
+        "gasUsed": 1182721,
+        "txHash": "0xb80bb178a3c594d29278880f64b7084e6d750e0c0f766c5a6aa113db8073ea16",
+        "timestamp": "2026-01-27T20:50:18.970Z"
+      },
+      "totalGasUsed": 1813895
+    },
+    "32": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x4ea9e5b8faf1234d82a764732934019528debae15abb57181704c0b37b557277",
+        "timestamp": "2026-01-27T20:51:20.225Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x28221aeb3a5723866c1c00ae25f2b3668fa827a762fbedcc5970f07853cd5d7f",
+        "timestamp": "2026-01-27T20:51:28.518Z"
+      },
+      "settleRace": {
+        "gasUsed": 1181252,
+        "txHash": "0xa8157d1f7d8a683c6c3b4af34edcf365fb733dec6fe6fa191248693a5aa05d05",
+        "timestamp": "2026-01-27T20:52:31.792Z"
+      },
+      "totalGasUsed": 1812450
     },
     "33": {
       "createRace": {
-        "gasUsed": 57397,
-        "txHash": "0xc95b4ebe3ad812351c605eee3d2e084fb46ffd9b6b0e222bd62c1c1e2c25b0bf",
-        "timestamp": "2026-01-24T00:26:31.736Z"
+        "gasUsed": 504719,
+        "txHash": "0x5d6cca21bd66174f5a5a2809772dfbca8d85f7727a044d182ea1309414befcf4",
+        "timestamp": "2026-01-27T20:53:35.042Z"
       },
-      "finalizeLineup": {
-        "gasUsed": 667160,
-        "txHash": "0xb237ec51f513764d889277571dddfc18c432283037aa22c3dda7ce97c1aaa465",
-        "timestamp": "2026-01-24T00:27:38.490Z"
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xc605eda30c4c316f33e879ab7792ba9a89e5fdc47d15fe4dfaad377e764c1749",
+        "timestamp": "2026-01-27T20:53:43.418Z"
       },
       "settleRace": {
-        "gasUsed": 7138841,
-        "txHash": "0x8210dea814d20f810a1dd6cf19bfa9b186ce4d9401848eaf9055b777f9b53752",
-        "timestamp": "2026-01-24T00:28:45.903Z"
+        "gasUsed": 1157047,
+        "txHash": "0xf521a9331cac3e27ab7d80dfb3502796a0342a8b63827f2414303f003f539783",
+        "timestamp": "2026-01-27T20:54:46.733Z"
       },
-      "totalGasUsed": 7863398
+      "totalGasUsed": 1788245
+    },
+    "34": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x7b391ce632de1b7f75a2f741f710b32f611824759736d0c3d36700aafe74ae77",
+        "timestamp": "2026-01-27T20:55:47.992Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0xb2090c2528a2c2dec510aa5774968fd10f03c84bc5c42cba9a6a27f1123c9378",
+        "timestamp": "2026-01-27T20:55:56.351Z"
+      },
+      "settleRace": {
+        "gasUsed": 1136708,
+        "txHash": "0xc446514272110f0a2fbfe70b162542743322d54371519730bbaa7e2e48299c03",
+        "timestamp": "2026-01-27T20:57:01.671Z"
+      },
+      "totalGasUsed": 1767906
+    },
+    "35": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x3899ac6386e7f8fa42dbc19276ee868baf5120e254b9c329acd4bd1622e4c3fe",
+        "timestamp": "2026-01-27T20:58:04.914Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126467,
+        "txHash": "0x21b6cc201f9842ee146a6331892ad9dee54f5b9d0e00d4634d38ad5fdfca4de5",
+        "timestamp": "2026-01-27T20:58:13.264Z"
+      },
+      "settleRace": {
+        "gasUsed": 1148734,
+        "txHash": "0xe75945af8998a537452315ec898988087b1809b9932bf741f8fd6bd93408deda",
+        "timestamp": "2026-01-27T20:59:16.565Z"
+      },
+      "totalGasUsed": 1779920
+    },
+    "36": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xf3a13bf05ad4ae49da6f76ffd05d0003b3116145bb713e275593908779bf0e21",
+        "timestamp": "2026-01-27T21:00:17.823Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126467,
+        "txHash": "0xbc0aabb508107166cf48e211b5ba60faff7ce83dfd2dc321cf9309970e8a66f3",
+        "timestamp": "2026-01-27T21:00:26.077Z"
+      },
+      "settleRace": {
+        "gasUsed": 1186044,
+        "txHash": "0x1ee8dccd0b3ea82d982b42b7af6d1001880f49bd87683dba089e04d0ebf48927",
+        "timestamp": "2026-01-27T21:01:31.385Z"
+      },
+      "totalGasUsed": 1817230
+    },
+    "37": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x9db3edb1f92e0fac219eee81fdb90f3f616be58fbc11bd7ae063b6014b622a31",
+        "timestamp": "2026-01-27T21:02:32.653Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x0f141178760b1b34493834383b97268ddffa522e9df5ff7721f30a33edbd55c1",
+        "timestamp": "2026-01-27T21:02:40.983Z"
+      },
+      "settleRace": {
+        "gasUsed": 1197539,
+        "txHash": "0x5aa5a8c4f27f73e2a76049dcf5272a7bac714ca9e76dee312109a089f8e834d3",
+        "timestamp": "2026-01-27T21:03:44.305Z"
+      },
+      "totalGasUsed": 1828737
+    },
+    "38": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x9a162041dbc22d41aa42498e32d4147afb447bd3e51d1d6dfd7f1ec6603921c1",
+        "timestamp": "2026-01-27T21:04:47.560Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126467,
+        "txHash": "0xd5cd6c782a412e1c1bba3e33bc7e23d36f4687eadc41c14b29f63fa4125cbfbb",
+        "timestamp": "2026-01-27T21:04:55.847Z"
+      },
+      "settleRace": {
+        "gasUsed": 1159105,
+        "txHash": "0xb3db195f118b8c3747be858b4a60853ccabe93cb3d680420a73a4257cc3319ff",
+        "timestamp": "2026-01-27T21:06:01.143Z"
+      },
+      "totalGasUsed": 1790291
+    },
+    "39": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x4a123a6bb0e58e4c8f61c0d3b96f5e06efa84fadc3ff5de3b982796fa73ba88c",
+        "timestamp": "2026-01-27T21:07:02.377Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126467,
+        "txHash": "0x691babe4de63eb12e7bbea5153687680b754870cc9c9eb8f89f0bd215d8368e3",
+        "timestamp": "2026-01-27T21:07:10.747Z"
+      },
+      "settleRace": {
+        "gasUsed": 1191877,
+        "txHash": "0x18b2e68df8108db99c021ba261ca3548f2fda2673b3ddc5f4cb3d39bf582c017",
+        "timestamp": "2026-01-27T21:08:14.040Z"
+      },
+      "totalGasUsed": 1823063
+    },
+    "40": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0xb8522a7b1d61d14527a3c76372d38f1225efc3b6e7076ddd13918af61407db0f",
+        "timestamp": "2026-01-27T21:09:17.276Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x68b42ee443d88268ef411fcd9f0760a2066b31c943525ffa12433de7c8b4b864",
+        "timestamp": "2026-01-27T21:09:25.680Z"
+      },
+      "settleRace": {
+        "gasUsed": 1193832,
+        "txHash": "0x6191e938e6df9c3ef0e75f7098a715cb7243d86436fd30def8516170d797b397",
+        "timestamp": "2026-01-27T21:10:30.968Z"
+      },
+      "totalGasUsed": 1825030
+    },
+    "41": {
+      "createRace": {
+        "gasUsed": 504719,
+        "txHash": "0x20e82093d51c53c35fc3603887d9eaed909d43eb73ebc8e969f4318ca2228b6c",
+        "timestamp": "2026-01-27T21:11:32.204Z"
+      },
+      "setProbabilities": {
+        "gasUsed": 126479,
+        "txHash": "0x3a6af0b29a7514528b362097a47cabac80fe48aab6e546d7ec596c3deb2c6226",
+        "timestamp": "2026-01-27T21:11:40.552Z"
+      },
+      "settleRace": {
+        "gasUsed": 1190403,
+        "txHash": "0xb41b9affc50260710f2f117880b8ec3cc14c30dac3a42e8ac5d07b9c10d74a2f",
+        "timestamp": "2026-01-27T21:12:43.816Z"
+      },
+      "totalGasUsed": 1821601
     }
   },
   "totals": {
-    "createRace": 114794,
+    "createRace": 22486326,
     "finalizeLineup": 1334320,
-    "settleRace": 14403108,
-    "total": 15852222
+    "settleRace": 63379012,
+    "total": 92385165,
+    "setProbabilities": 5185507
   }
 }

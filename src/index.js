@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { ethers } from 'ethers';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import config from './config.js';
-import { GIRAFFE_RACE_ABI, BOT_ACTION, BOT_ACTION_NAMES } from './abi.js';
+import { GIRAFFE_RACE_ABI, BOT_ACTION, BOT_ACTION_NAMES, decodeContractError } from './abi.js';
 import { calculateProbabilities, formatProbabilitiesForLog } from './monte-carlo.js';
 
 // ============================================================================
@@ -59,7 +59,7 @@ function loadGasTracking() {
   } catch (error) {
     log('⚠️', `Failed to load gas tracking file: ${error.message}`);
   }
-  return { races: {}, totals: { createRace: 0, setOdds: 0, settleRace: 0, cancelRace: 0, total: 0 } };
+  return { races: {}, totals: { createRace: 0, setProbabilities: 0, settleRace: 0, cancelRace: 0, total: 0 } };
 }
 
 function saveGasTracking(data) {
@@ -88,14 +88,14 @@ function trackGasUsage(raceId, transactionType, gasUsed, txHash) {
   const raceData = data.races[raceKey];
   const raceTotalGas = 
     (raceData.createRace?.gasUsed || 0) + 
-    (raceData.setOdds?.gasUsed || 0) + 
+    (raceData.setProbabilities?.gasUsed || 0) + 
     (raceData.settleRace?.gasUsed || 0) +
     (raceData.cancelRace?.gasUsed || 0);
   
   // Rebuild with correct order
   const orderedRaceData = {};
   if (raceData.createRace) orderedRaceData.createRace = raceData.createRace;
-  if (raceData.setOdds) orderedRaceData.setOdds = raceData.setOdds;
+  if (raceData.setProbabilities) orderedRaceData.setProbabilities = raceData.setProbabilities;
   if (raceData.settleRace) orderedRaceData.settleRace = raceData.settleRace;
   if (raceData.cancelRace) orderedRaceData.cancelRace = raceData.cancelRace;
   orderedRaceData.totalGasUsed = raceTotalGas;
@@ -120,7 +120,7 @@ function logGasSummary() {
   
   log('📊', `Gas Summary (${raceCount} races tracked):`);
   console.log(`    ├─ Create Race Total: ${data.totals.createRace?.toLocaleString() || 0} gas`);
-  console.log(`    ├─ Set Odds Total: ${data.totals.setOdds?.toLocaleString() || 0} gas`);
+  console.log(`    ├─ Set Probabilities Total: ${data.totals.setProbabilities?.toLocaleString() || 0} gas`);
   console.log(`    ├─ Settle Total: ${data.totals.settleRace?.toLocaleString() || 0} gas`);
   console.log(`    ├─ Cancel Total: ${data.totals.cancelRace?.toLocaleString() || 0} gas`);
   console.log(`    └─ Grand Total: ${data.totals.total?.toLocaleString() || 0} gas`);
@@ -288,12 +288,13 @@ async function executeCreateRace() {
     
     return { success: true, raceId, gasUsed, txHash: tx.hash };
   } catch (error) {
-    log('❌', `Failed to create race: ${error.message}`);
-    return { success: false };
+    const decodedError = decodeContractError(error);
+    log('❌', `Failed to create race: ${decodedError}`);
+    return { success: false, error: decodedError };
   }
 }
 
-async function executeSetOdds(raceId, scores) {
+async function executeSetProbabilities(raceId, scores) {
   log('🎲', `Calculating probabilities for Race #${raceId}...`);
   
   try {
@@ -306,20 +307,21 @@ async function executeSetOdds(raceId, scores) {
     
     // Submit probabilities to contract (contract applies house edge to convert to odds)
     log('📝', 'Submitting probabilities to contract...');
-    const tx = await giraffeRace.setOdds(raceId, result.winProbBps, result.placeProbBps, result.showProbBps);
+    const tx = await giraffeRace.setProbabilities(raceId, result.winProbBps, result.placeProbBps, result.showProbBps);
     log('📤', `Transaction sent: ${tx.hash}`);
     log('⏳', 'Waiting for confirmation...');
     
     const receipt = await tx.wait();
     const gasUsed = receipt.gasUsed.toString();
-    log('✅', `Odds set for Race #${raceId}! Gas used: ${gasUsed}`);
+    log('✅', `Probabilities set for Race #${raceId}! Gas used: ${gasUsed}`);
     
-    trackGasUsage(raceId, 'setOdds', gasUsed, tx.hash);
+    trackGasUsage(raceId, 'setProbabilities', gasUsed, tx.hash);
     
     return { success: true, gasUsed, txHash: tx.hash, probabilities: result };
   } catch (error) {
-    log('❌', `Failed to set odds: ${error.message}`);
-    return { success: false };
+    const decodedError = decodeContractError(error);
+    log('❌', `Failed to set probabilities: ${decodedError}`);
+    return { success: false, error: decodedError };
   }
 }
 
@@ -339,8 +341,9 @@ async function executeSettleRace(raceId) {
     
     return { success: true, gasUsed, txHash: tx.hash };
   } catch (error) {
-    log('❌', `Failed to settle race: ${error.message}`);
-    return { success: false };
+    const decodedError = decodeContractError(error);
+    log('❌', `Failed to settle race: ${decodedError}`);
+    return { success: false, error: decodedError };
   }
 }
 
@@ -354,8 +357,9 @@ async function executeCancelRace(raceId) {
     log('🔄', 'Creating new race (auto-cancels expired race)...');
     return await executeCreateRace();
   } catch (error) {
-    log('❌', `Failed to cancel race: ${error.message}`);
-    return { success: false };
+    const decodedError = decodeContractError(error);
+    log('❌', `Failed to cancel race: ${decodedError}`);
+    return { success: false, error: decodedError };
   }
 }
 
@@ -384,12 +388,6 @@ async function runBot() {
   }
   
   log('💾', `Gas tracking: ${GAS_TRACKING_FILE}`);
-  
-  // Verify wallet is raceBot
-  if (walletInfo.address.toLowerCase() !== config.addresses.raceBot.toLowerCase()) {
-    log('⚠️', `WARNING: Wallet is not raceBot! Only ${config.addresses.raceBot} can call setOdds()`);
-    log('⚠️', `Current wallet: ${walletInfo.address}`);
-  }
   
   logGasSummary();
   
@@ -450,19 +448,19 @@ async function runBot() {
         }
         
         // ========================================
-        // CASE 2: Calculate and set odds
+        // CASE 2: Calculate and set probabilities
         // ========================================
-        case BOT_ACTION.SET_ODDS: {
-          log('🎯', `ACTION: Set odds for Race #${dashboard.raceId}`);
+        case BOT_ACTION.SET_PROBABILITIES: {
+          log('🎯', `ACTION: Set probabilities for Race #${dashboard.raceId}`);
           log('🦒', `Scores: [${dashboard.scores.join(', ')}]`);
           log('⏰', `Deadline: ${dashboard.blocksRemaining} blocks remaining`);
           
-          const result = await executeSetOdds(dashboard.raceId, dashboard.scores);
+          const result = await executeSetProbabilities(dashboard.raceId, dashboard.scores);
           if (result.success) {
             await sleep(3000);
           } else {
-            // Failed to set odds - will need to cancel if time runs out
-            log('⚠️', 'Failed to set odds - will retry...');
+            // Failed to set probabilities - will need to cancel if time runs out
+            log('⚠️', 'Failed to set probabilities - will retry...');
             await sleep(2000);
           }
           break;
