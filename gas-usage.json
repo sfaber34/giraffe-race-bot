@@ -1,0 +1,46 @@
+{
+  "races": {
+    "32": {
+      "createRace": {
+        "gasUsed": 57397,
+        "txHash": "0xd584351e50f4ed9a991bbeda7507c6b471c441526bad4cb1e928622eb07eae19",
+        "timestamp": "2026-01-24T00:23:15.191Z"
+      },
+      "finalizeLineup": {
+        "gasUsed": 667160,
+        "txHash": "0xfbe40b79d304e01fafa2b2ebff43007b74566ff49d89cebd23ea383f09930655",
+        "timestamp": "2026-01-24T00:24:20.089Z"
+      },
+      "settleRace": {
+        "gasUsed": 7264267,
+        "txHash": "0x069ccef7be15e642c56244bfce648270b4f050e7ada5bb2959eeb32125ec82cc",
+        "timestamp": "2026-01-24T00:25:27.799Z"
+      },
+      "totalGasUsed": 7988824
+    },
+    "33": {
+      "createRace": {
+        "gasUsed": 57397,
+        "txHash": "0xc95b4ebe3ad812351c605eee3d2e084fb46ffd9b6b0e222bd62c1c1e2c25b0bf",
+        "timestamp": "2026-01-24T00:26:31.736Z"
+      },
+      "finalizeLineup": {
+        "gasUsed": 667160,
+        "txHash": "0xb237ec51f513764d889277571dddfc18c432283037aa22c3dda7ce97c1aaa465",
+        "timestamp": "2026-01-24T00:27:38.490Z"
+      },
+      "settleRace": {
+        "gasUsed": 7138841,
+        "txHash": "0x8210dea814d20f810a1dd6cf19bfa9b186ce4d9401848eaf9055b777f9b53752",
+        "timestamp": "2026-01-24T00:28:45.903Z"
+      },
+      "totalGasUsed": 7863398
+    }
+  },
+  "totals": {
+    "createRace": 114794,
+    "finalizeLineup": 1334320,
+    "settleRace": 14403108,
+    "total": 15852222
+  }
+}

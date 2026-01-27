@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { ethers } from 'ethers';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import config from './config.js';
 import { GIRAFFE_RACE_ABI } from './abi.js';
 
@@ -40,6 +41,87 @@ function switchProvider() {
     wallet
   );
   log('🔀', `Switched to RPC: ${config.fallbackRpcs[currentProviderIndex]}`);
+}
+
+// ============================================================================
+// GAS TRACKING
+// ============================================================================
+
+const GAS_TRACKING_FILE = 'gas-usage.json';
+
+function loadGasTracking() {
+  try {
+    if (existsSync(GAS_TRACKING_FILE)) {
+      const data = readFileSync(GAS_TRACKING_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    log('⚠️', `Failed to load gas tracking file: ${error.message}`);
+  }
+  return { races: {}, totals: { createRace: 0, finalizeLineup: 0, settleRace: 0, total: 0 } };
+}
+
+function saveGasTracking(data) {
+  try {
+    writeFileSync(GAS_TRACKING_FILE, JSON.stringify(data, null, 2));
+  } catch (error) {
+    log('⚠️', `Failed to save gas tracking file: ${error.message}`);
+  }
+}
+
+function trackGasUsage(raceId, transactionType, gasUsed, txHash) {
+  const data = loadGasTracking();
+  const raceKey = raceId.toString();
+  
+  // Initialize race entry if doesn't exist
+  if (!data.races[raceKey]) {
+    data.races[raceKey] = {};
+  }
+  
+  // Store transaction data
+  data.races[raceKey][transactionType] = {
+    gasUsed: Number(gasUsed),
+    txHash,
+    timestamp: new Date().toISOString(),
+  };
+  
+  // Calculate total gas used for this race
+  const raceData = data.races[raceKey];
+  const raceTotalGas = 
+    (raceData.createRace?.gasUsed || 0) + 
+    (raceData.finalizeLineup?.gasUsed || 0) + 
+    (raceData.settleRace?.gasUsed || 0);
+  
+  // Rebuild race object with correct order: createRace, finalizeLineup, settleRace, totalGasUsed
+  const orderedRaceData = {};
+  if (raceData.createRace) orderedRaceData.createRace = raceData.createRace;
+  if (raceData.finalizeLineup) orderedRaceData.finalizeLineup = raceData.finalizeLineup;
+  if (raceData.settleRace) orderedRaceData.settleRace = raceData.settleRace;
+  orderedRaceData.totalGasUsed = raceTotalGas;
+  data.races[raceKey] = orderedRaceData;
+  
+  // Update global totals
+  data.totals[transactionType] = (data.totals[transactionType] || 0) + Number(gasUsed);
+  data.totals.total = (data.totals.total || 0) + Number(gasUsed);
+  
+  saveGasTracking(data);
+  log('📊', `Gas tracked for Race #${raceId} ${transactionType}: ${gasUsed} (race total: ${raceTotalGas.toLocaleString()})`);
+}
+
+function logGasSummary() {
+  const data = loadGasTracking();
+  const raceCount = Object.keys(data.races).length;
+  
+  if (raceCount === 0) {
+    log('📊', 'No gas usage tracked yet');
+    return;
+  }
+  
+  log('📊', `Gas Summary (${raceCount} races tracked):`);
+  console.log(`    ├─ Create Race Total: ${data.totals.createRace?.toLocaleString() || 0} gas`);
+  console.log(`    ├─ Finalize Total: ${data.totals.finalizeLineup?.toLocaleString() || 0} gas`);
+  console.log(`    ├─ Settle Total: ${data.totals.settleRace?.toLocaleString() || 0} gas`);
+  console.log(`    └─ Grand Total: ${data.totals.total?.toLocaleString() || 0} gas`);
 }
 
 // ============================================================================
@@ -241,26 +323,39 @@ function logRaceState(basic, actionability, currentBlock) {
 }
 
 // ============================================================================
-// TRANSACTION FUNCTIONS
+// TRANSACTION FUNCTIONS (with gas tracking)
 // ============================================================================
+
+// Track which race we're currently working on
+let currentRaceId = null;
 
 async function executeCreateRace() {
   log('🏁', 'Creating new race...');
   try {
+    // Get the race ID BEFORE creating - nextRaceId() tells us what ID will be assigned
+    // This avoids RPC sync delays that can cause latestRaceId() to return the wrong value
+    const newRaceId = await withRetry(() => giraffeRace.nextRaceId());
+    log('📋', `New race will be #${newRaceId}`);
+    
     const tx = await giraffeRace.createRace();
     log('📤', `Transaction sent: ${tx.hash}`);
     log('⏳', 'Waiting for confirmation...');
     
     const receipt = await tx.wait();
-    log('✅', `Race created! Gas used: ${receipt.gasUsed.toString()}`);
-    return true;
+    const gasUsed = receipt.gasUsed.toString();
+    log('✅', `Race #${newRaceId} created! Gas used: ${gasUsed}`);
+    
+    currentRaceId = newRaceId;
+    trackGasUsage(newRaceId, 'createRace', gasUsed, tx.hash);
+    
+    return { success: true, gasUsed, txHash: tx.hash };
   } catch (error) {
     log('❌', `Failed to create race: ${error.message}`);
-    return false;
+    return { success: false };
   }
 }
 
-async function executeFinalizeRaceGiraffes() {
+async function executeFinalizeRaceGiraffes(raceId) {
   log('🦒', 'Finalizing race giraffes (selecting lineup)...');
   try {
     const tx = await giraffeRace.finalizeRaceGiraffes();
@@ -268,15 +363,22 @@ async function executeFinalizeRaceGiraffes() {
     log('⏳', 'Waiting for confirmation...');
     
     const receipt = await tx.wait();
-    log('✅', `Lineup finalized! Gas used: ${receipt.gasUsed.toString()}`);
-    return true;
+    const gasUsed = receipt.gasUsed.toString();
+    log('✅', `Lineup finalized! Gas used: ${gasUsed}`);
+    
+    // Track gas for this race
+    if (raceId) {
+      trackGasUsage(raceId, 'finalizeLineup', gasUsed, tx.hash);
+    }
+    
+    return { success: true, gasUsed, txHash: tx.hash };
   } catch (error) {
     log('❌', `Failed to finalize giraffes: ${error.message}`);
-    return false;
+    return { success: false };
   }
 }
 
-async function executeSettleRace() {
+async function executeSettleRace(raceId) {
   log('🏆', 'Settling race (determining winner)...');
   try {
     const tx = await giraffeRace.settleRace();
@@ -284,11 +386,18 @@ async function executeSettleRace() {
     log('⏳', 'Waiting for confirmation...');
     
     const receipt = await tx.wait();
-    log('✅', `Race settled! Gas used: ${receipt.gasUsed.toString()}`);
-    return true;
+    const gasUsed = receipt.gasUsed.toString();
+    log('✅', `Race settled! Gas used: ${gasUsed}`);
+    
+    // Track gas for this race
+    if (raceId) {
+      trackGasUsage(raceId, 'settleRace', gasUsed, tx.hash);
+    }
+    
+    return { success: true, gasUsed, txHash: tx.hash };
   } catch (error) {
     log('❌', `Failed to settle race: ${error.message}`);
-    return false;
+    return { success: false };
   }
 }
 
@@ -336,6 +445,10 @@ async function runBot() {
   log('🔗', `Active RPC: ${config.fallbackRpcs[currentProviderIndex]}`);
   log('👥', `Presence API: ${config.bot.presenceApiUrl}`);
   log('🧠', `Using canFinalizeNow/canSettleNow from contract - no more guessing!`);
+  log('💾', `Gas tracking file: ${GAS_TRACKING_FILE}`);
+  
+  // Show existing gas summary
+  logGasSummary();
   
   logHeader('🔄 STARTING BOT LOOP');
   
@@ -410,8 +523,8 @@ async function runBot() {
         await sleep(BLOCK_TIME_MS);
         
         log('🦒', 'Finalizing lineup...');
-        const success = await executeFinalizeRaceGiraffes();
-        if (success) {
+        const result = await executeFinalizeRaceGiraffes(activeRaceId);
+        if (result.success) {
           await sleep(3000);
         } else {
           // If failed, wait a bit and retry
@@ -430,8 +543,8 @@ async function runBot() {
         await sleep(BLOCK_TIME_MS);
         
         log('🏆', 'Settling race...');
-        const success = await executeSettleRace();
-        if (success) {
+        const result = await executeSettleRace(activeRaceId);
+        if (result.success) {
           await sleep(3000);
         } else {
           // If failed, wait a bit and retry
