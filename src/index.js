@@ -368,15 +368,22 @@ async function runBot() {
   
   // Display startup info
   const walletInfo = await getWalletInfo();
+  const networkName = config.isLocalChain ? 'Local Chain' : 'Base Mainnet';
+  
   log('💰', `Wallet: ${walletInfo.address}`);
   log('💵', `Balance: ${walletInfo.balance} ETH`);
-  log('📍', `Network: Base Mainnet (Chain ID: ${config.chainId})`);
+  log('📍', `Network: ${networkName} (Chain ID: ${config.chainId})`);
   log('📜', `Contract: ${config.giraffeRaceContract}`);
-  log('🌐', `RPC Pool: ${config.fallbackRpcs.length} endpoints`);
-  log('🔗', `Active RPC: ${config.fallbackRpcs[currentProviderIndex]}`);
-  log('👥', `Presence API: ${config.bot.presenceApiUrl}`);
-  log('🎲', `Monte Carlo: ${config.monteCarlo.samples.toLocaleString()} samples (house edge applied on-chain)`);
-  log('💾', `Gas tracking file: ${GAS_TRACKING_FILE}`);
+  log('🔗', `RPC: ${config.fallbackRpcs[currentProviderIndex]}`);
+  log('🎲', `Monte Carlo: ${config.monteCarlo.samples.toLocaleString()} samples`);
+  
+  if (config.isLocalChain) {
+    log('🧪', 'LOCAL MODE: Presence check disabled');
+  } else {
+    log('👥', `Presence API: ${config.bot.presenceApiUrl}`);
+  }
+  
+  log('💾', `Gas tracking: ${GAS_TRACKING_FILE}`);
   
   // Verify wallet is raceBot
   if (walletInfo.address.toLowerCase() !== config.addresses.raceBot.toLowerCase()) {
@@ -421,13 +428,15 @@ async function runBot() {
         // CASE 1: Create a new race
         // ========================================
         case BOT_ACTION.CREATE_RACE: {
-          // Check if anyone is online before creating a race
-          const activeUsers = await getActiveUsers();
-          log('👥', `Active users: ${activeUsers}`);
-          
-          if (activeUsers === 0) {
-            await waitForActiveUsers();
-            continue;
+          // Check if anyone is online before creating a race (skip on local chain)
+          if (!config.bot.skipPresenceCheck) {
+            const activeUsers = await getActiveUsers();
+            log('👥', `Active users: ${activeUsers}`);
+            
+            if (activeUsers === 0) {
+              await waitForActiveUsers();
+              continue;
+            }
           }
           
           log('🎯', 'ACTION: Create new race');
