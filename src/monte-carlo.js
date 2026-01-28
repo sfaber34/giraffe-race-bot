@@ -2,6 +2,19 @@
  * Monte Carlo probability calculator for 6-lane giraffe races.
  * Outputs raw Win, Place, and Show probabilities in basis points.
  * 
+ * Can be used as a library (import calculateProbabilities) or CLI:
+ *   node src/monte-carlo.js --scores 10,10,10,10,10,10 --samples 50000
+ *   node src/monte-carlo.js --scores 1,5,7,8,9,10 --samples 100000 --json
+ * 
+ * WINNER DETERMINATION: First to cross the finish line (1000 units) wins!
+ * - Track which tick each racer crosses 1000
+ * - Earliest tick = higher position
+ * - Same tick = dead heat (tie)
+ * 
+ * Dead Heat Rules:
+ *   - If tied for last qualifying position, probability is split
+ *   - Example: 2-way tie for 2nd → each gets 0.5 credit for Place
+ * 
  * NOTE: House edge is NOT applied here. The contract applies edge when converting
  * probabilities to odds: odds = (1 - houseEdge) / probability
  */
@@ -90,6 +103,7 @@ function simulateFullRace(seed, scores) {
     scoreBps(scores[5]),
   ];
 
+  const finishTicks = [-1, -1, -1, -1, -1, -1];
   const finishLine = TRACK_LENGTH + FINISH_OVERSHOOT;
 
   for (let t = 0; t < MAX_TICKS; t++) {
@@ -103,10 +117,9 @@ function simulateFullRace(seed, scores) {
     if (allFinished) break;
 
     for (let a = 0; a < LANE_COUNT; a++) {
-      const r = rng.roll(SPEED_RANGE); // 0..9
-      const baseSpeed = r + 1; // 1..10
+      const r = rng.roll(SPEED_RANGE);
+      const baseSpeed = r + 1;
 
-      // Apply handicap with probabilistic rounding
       const raw = baseSpeed * bps[a];
       let q = Math.floor(raw / 10_000);
       const rem = raw % 10_000;
@@ -114,27 +127,37 @@ function simulateFullRace(seed, scores) {
         const pick = rng.roll(10_000);
         if (pick < rem) q += 1;
       }
+
+      const prevDist = distances[a];
       distances[a] += q > 0 ? q : 1;
+
+      if (finishTicks[a] === -1 && prevDist < TRACK_LENGTH && distances[a] >= TRACK_LENGTH) {
+        finishTicks[a] = t;
+      }
     }
   }
 
-  return calculateFinishOrder(distances);
+  const finishOrder = calculateFinishOrder(finishTicks, distances);
+  return { finishOrder, finalDistances: distances, finishTicks };
 }
 
-function calculateFinishOrder(distances) {
-  const sorted = distances
-    .map((d, i) => ({ lane: i, distance: d }))
-    .sort((a, b) => b.distance - a.distance);
+function calculateFinishOrder(finishTicks, distances) {
+  const sorted = finishTicks
+    .map((tick, lane) => ({ lane, tick, distance: distances[lane] }))
+    .sort((a, b) => {
+      if (a.tick !== b.tick) return a.tick - b.tick;
+      return b.distance - a.distance;
+    });
 
   const groups = [];
-  let currentGroup = { distance: sorted[0].distance, lanes: [sorted[0].lane] };
+  let currentGroup = { tick: sorted[0].tick, lanes: [sorted[0].lane] };
 
   for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i].distance === currentGroup.distance) {
+    if (sorted[i].tick === currentGroup.tick) {
       currentGroup.lanes.push(sorted[i].lane);
     } else {
       groups.push(currentGroup);
-      currentGroup = { distance: sorted[i].distance, lanes: [sorted[i].lane] };
+      currentGroup = { tick: sorted[i].tick, lanes: [sorted[i].lane] };
     }
   }
   groups.push(currentGroup);
@@ -258,7 +281,7 @@ function accumulateStats(stats, finishOrder) {
 }
 
 // -----------------------
-// Main calculation function
+// Library exports
 // -----------------------
 
 /**
@@ -285,7 +308,6 @@ export function calculateProbabilities(scores, samples = 50000) {
     showCredits: 0,
   }));
 
-  // Seed generator with timestamp and scores
   const seedState = { x: (Date.now() * 0x9e3779b9) >>> 0 || 0x12345678 };
   for (const s of clampedScores) {
     seedState.x = (seedState.x ^ (s * 0x85ebca6b)) >>> 0;
@@ -294,16 +316,14 @@ export function calculateProbabilities(scores, samples = 50000) {
 
   const started = Date.now();
 
-  // Run simulations
   for (let i = 0; i < samples; i++) {
     const seed = splitmix32Next(seedState);
-    const finishOrder = simulateFullRace(seed, clampedScores);
+    const { finishOrder } = simulateFullRace(seed, clampedScores);
     accumulateStats(stats, finishOrder);
   }
 
   const elapsedMs = Date.now() - started;
 
-  // Convert credits to probabilities in basis points
   const winProbBps = [];
   const placeProbBps = [];
   const showProbBps = [];
@@ -313,7 +333,6 @@ export function calculateProbabilities(scores, samples = 50000) {
     const placeProb = stats[i].placeCredits / samples;
     const showProb = stats[i].showCredits / samples;
 
-    // Convert to basis points (0-10000)
     winProbBps.push(Math.round(winProb * 10000));
     placeProbBps.push(Math.round(placeProb * 10000));
     showProbBps.push(Math.round(showProb * 10000));
@@ -358,7 +377,6 @@ export function formatProbabilitiesForLog(result) {
 
   lines.push('╚═══════════════════════════════════════════════════════════════════════════╝');
   
-  // Sum checks
   const winSum = result.winProbBps.reduce((a, b) => a + b, 0);
   const placeSum = result.placeProbBps.reduce((a, b) => a + b, 0);
   const showSum = result.showProbBps.reduce((a, b) => a + b, 0);
@@ -370,3 +388,100 @@ export function formatProbabilitiesForLog(result) {
 }
 
 export default { calculateProbabilities, formatProbabilitiesForLog };
+
+// -----------------------
+// CLI support
+// -----------------------
+
+function parseArgs(argv) {
+  const out = {
+    scores: null,
+    samples: 10_000,
+    salt: 0,
+    json: false,
+    help: false,
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--scores') out.scores = String(argv[++i] ?? '');
+    else if (a === '--samples') out.samples = Number(argv[++i]);
+    else if (a === '--salt') out.salt = Number(argv[++i]) || 0;
+    else if (a === '--json') out.json = true;
+    else if (a === '--help' || a === '-h') out.help = true;
+  }
+  return out;
+}
+
+function usage() {
+  console.log('monte-carlo.js - Win/Place/Show probability calculator');
+  console.log('');
+  console.log('Usage:');
+  console.log('  node src/monte-carlo.js --scores s1,s2,s3,s4,s5,s6 [options]');
+  console.log('');
+  console.log('Options:');
+  console.log('  --scores  s1,s2,s3,s4,s5,s6   (required; each 1..10)');
+  console.log('  --samples N                   (default 10000)');
+  console.log('  --salt    X                   (optional; numeric salt for seed variety)');
+  console.log('  --json                        (output raw JSON for programmatic use)');
+  console.log('');
+  console.log('WINNER DETERMINATION: First to cross the finish line (1000 units) wins!');
+  console.log('');
+  console.log('Output:');
+  console.log('  Win:   Probability of finishing 1st (in basis points)');
+  console.log('  Place: Probability of finishing 1st OR 2nd (in basis points)');
+  console.log('  Show:  Probability of finishing 1st, 2nd, OR 3rd (in basis points)');
+  console.log('');
+  console.log('Note: House edge is applied ON-CHAIN, not here.');
+}
+
+function parseScores(s) {
+  const parts = String(s)
+    .split(',')
+    .map(x => x.trim())
+    .filter(Boolean);
+  if (parts.length !== 6) throw new Error('Expected 6 comma-separated scores');
+  return parts.map(x => clampScore(Number(x)));
+}
+
+// Only run CLI if invoked directly
+const isMain = process.argv[1]?.endsWith('monte-carlo.js');
+if (isMain) {
+  const args = parseArgs(process.argv.slice(2));
+  
+  if (args.help) {
+    usage();
+    process.exit(0);
+  }
+  
+  if (!args.scores) {
+    usage();
+    console.error('\nError: --scores is required');
+    process.exit(1);
+  }
+  
+  if (!Number.isFinite(args.samples) || args.samples <= 0) {
+    console.error('Error: --samples must be > 0');
+    process.exit(1);
+  }
+
+  const scores = parseScores(args.scores);
+  const result = calculateProbabilities(scores, args.samples);
+
+  if (args.json) {
+    const output = {
+      scores: result.scores,
+      samples: result.samples,
+      elapsedMs: result.elapsedMs,
+      lanes: result.scores.map((score, lane) => ({
+        lane,
+        score,
+        winProbBps: result.winProbBps[lane],
+        placeProbBps: result.placeProbBps[lane],
+        showProbBps: result.showProbBps[lane],
+      })),
+    };
+    console.log(JSON.stringify(output, null, 2));
+  } else {
+    console.log(formatProbabilitiesForLog(result));
+  }
+}
