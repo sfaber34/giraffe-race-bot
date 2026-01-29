@@ -9,7 +9,8 @@ export const GIRAFFE_RACE_ABI = [
       { name: 'action', type: 'uint8' },
       { name: 'raceId', type: 'uint256' },
       { name: 'blocksRemaining', type: 'uint64' },
-      { name: 'scores', type: 'uint8[6]' }
+      { name: 'scores', type: 'uint8[6]' },
+      { name: 'expiredRaceIds', type: 'uint256[]' }
     ],
     stateMutability: 'view'
   },
@@ -46,6 +47,13 @@ export const GIRAFFE_RACE_ABI = [
     name: 'cancelRaceNoOdds',
     inputs: [{ name: 'raceId', type: 'uint256' }],
     outputs: [],
+    stateMutability: 'nonpayable'
+  },
+  {
+    type: 'function',
+    name: 'cleanupExpiredRace',
+    inputs: [{ name: 'raceId', type: 'uint256' }],
+    outputs: [{ name: 'released', type: 'uint256' }],
     stateMutability: 'nonpayable'
   },
   

@@ -1,29 +1,33 @@
 /**
  * Monte Carlo probability calculator for 6-lane giraffe races.
- * Outputs raw Win, Place, and Show probabilities in basis points.
- * 
- * Can be used as a library (import calculateProbabilities) or CLI:
- *   node src/monte-carlo.js --scores 10,10,10,10,10,10 --samples 50000
- *   node src/monte-carlo.js --scores 1,5,7,8,9,10 --samples 100000 --json
- * 
+ * Outputs raw Win, Place, and Show probabilities for each lane in basis points.
+ * These probabilities are meant to be committed on-chain; the contract applies house edge.
+ *
+ * Output:
+ *   - Win probability: chance of finishing 1st
+ *   - Place probability: chance of finishing 1st OR 2nd
+ *   - Show probability: chance of finishing 1st, 2nd, OR 3rd
+ *
  * WINNER DETERMINATION: First to cross the finish line (1000 units) wins!
- * - Track which tick each racer crosses 1000
- * - Earliest tick = higher position
- * - Same tick = dead heat (tie)
- * 
+ * - Uses fractional tick interpolation for precise ordering
+ * - Calculates exactly when within a tick each racer crosses 1000
+ * - Lower finish time = higher position
+ * - Dead heats only when finish time is exactly equal (very rare)
+ *
  * Dead Heat Rules:
  *   - If tied for last qualifying position, probability is split
  *   - Example: 2-way tie for 2nd → each gets 0.5 credit for Place
- * 
- * NOTE: House edge is NOT applied here. The contract applies edge when converting
+ *
+ * Note: House edge is NOT applied here. The contract applies edge when converting
  * probabilities to odds: odds = (1 - houseEdge) / probability
  */
 
 const LANE_COUNT = 6;
 const SPEED_RANGE = 10;
 const TRACK_LENGTH = 1000;
-const FINISH_OVERSHOOT = 10;
+const FINISH_OVERSHOOT = 10; // Run until last place is this far past finish
 const MAX_TICKS = 500;
+const FINISH_TIME_PRECISION = 10000; // Precision for fractional tick calculation
 
 // -----------------------
 // Fast PRNG (xorshift128) - ~10-50x faster than keccak256
@@ -31,13 +35,16 @@ const MAX_TICKS = 500;
 
 class FastRng {
   constructor(seed) {
+    // Initialize state from numeric seed
     this.s0 = seed >>> 0 || 0x12345678;
     this.s1 = Math.imul(seed, 0x85ebca6b) >>> 0 || 0x9abcdef0;
     this.s2 = Math.imul(seed, 0xc2b2ae35) >>> 0 || 0xdeadbeef;
     this.s3 = Math.imul(seed, 0x27d4eb2f) >>> 0 || 0xcafebabe;
+    // Warm up
     for (let i = 0; i < 20; i++) this.next();
   }
 
+  // xorshift128 - returns 32-bit unsigned integer
   next() {
     let t = this.s3;
     const s = this.s0;
@@ -50,6 +57,7 @@ class FastRng {
     return this.s0;
   }
 
+  // Returns random integer in [0, n-1]
   roll(n) {
     if (n <= 1) return 0;
     return this.next() % n;
@@ -91,6 +99,20 @@ function scoreBps(score) {
 // Full race simulation (runs until ALL racers finish)
 // -----------------------
 
+/**
+ * Simulate a full race and return the finish order.
+ * Runs until ALL racers are past TRACK_LENGTH + FINISH_OVERSHOOT.
+ *
+ * WINNER DETERMINATION: First to cross the finish line (1000 units) wins!
+ * - Uses fractional tick interpolation for precise ordering
+ * - Calculates exactly when within a tick each racer crosses 1000
+ * - Lower finish time = higher position
+ * - Dead heats only when finish time is exactly equal (very rare)
+ *
+ * @param {number} seed - Numeric seed for RNG
+ * @param {number[]} scores - Array of 6 scores (1-10)
+ * @returns {{ finishOrder: Object, finalDistances: number[], finishTimes: number[] }}
+ */
 function simulateFullRace(seed, scores) {
   const rng = new FastRng(seed);
   const distances = [0, 0, 0, 0, 0, 0];
@@ -103,10 +125,17 @@ function simulateFullRace(seed, scores) {
     scoreBps(scores[5]),
   ];
 
-  const finishTicks = [-1, -1, -1, -1, -1, -1];
+  // Track precise finish time for each lane (-1 = hasn't crossed)
+  // Format: tick * FINISH_TIME_PRECISION + fractionalPart
+  // fractionalPart = (distanceToFinish * PRECISION) / speedThisTick
+  // Lower value = crossed finish line earlier within the tick
+  const finishTimes = [-1, -1, -1, -1, -1, -1];
+
   const finishLine = TRACK_LENGTH + FINISH_OVERSHOOT;
 
+  // Run until ALL racers have finished
   for (let t = 0; t < MAX_TICKS; t++) {
+    // Check if all finished
     let allFinished = true;
     for (let a = 0; a < LANE_COUNT; a++) {
       if (distances[a] < finishLine) {
@@ -116,10 +145,12 @@ function simulateFullRace(seed, scores) {
     }
     if (allFinished) break;
 
+    // Move each racer
     for (let a = 0; a < LANE_COUNT; a++) {
-      const r = rng.roll(SPEED_RANGE);
-      const baseSpeed = r + 1;
+      const r = rng.roll(SPEED_RANGE); // 0..9
+      const baseSpeed = r + 1; // 1..10
 
+      // Apply handicap with probabilistic rounding
       const raw = baseSpeed * bps[a];
       let q = Math.floor(raw / 10_000);
       const rem = raw % 10_000;
@@ -128,40 +159,62 @@ function simulateFullRace(seed, scores) {
         if (pick < rem) q += 1;
       }
 
+      const speed = q > 0 ? q : 1;
       const prevDist = distances[a];
-      distances[a] += q > 0 ? q : 1;
+      distances[a] += speed;
 
-      if (finishTicks[a] === -1 && prevDist < TRACK_LENGTH && distances[a] >= TRACK_LENGTH) {
-        finishTicks[a] = t;
+      // Check if this lane just crossed the finish line THIS tick
+      if (finishTimes[a] === -1 && prevDist < TRACK_LENGTH && distances[a] >= TRACK_LENGTH) {
+        // Calculate precise finish time using linear interpolation:
+        // What fraction of this tick did it take to reach exactly TRACK_LENGTH?
+        // fraction = (TRACK_LENGTH - prevDist) / speed
+        // Lower fraction = crossed earlier within the tick
+        const distanceToFinish = TRACK_LENGTH - prevDist;
+        const fractional = Math.floor((distanceToFinish * FINISH_TIME_PRECISION) / speed);
+        finishTimes[a] = t * FINISH_TIME_PRECISION + fractional;
       }
     }
   }
 
-  const finishOrder = calculateFinishOrder(finishTicks, distances);
-  return { finishOrder, finalDistances: distances, finishTicks };
+  // Calculate finish order based on precise finish time
+  const finishOrder = calculateFinishOrder(finishTimes, distances);
+
+  return { finishOrder, finalDistances: distances, finishTimes };
 }
 
-function calculateFinishOrder(finishTicks, distances) {
-  const sorted = finishTicks
-    .map((tick, lane) => ({ lane, tick, distance: distances[lane] }))
+/**
+ * Calculate finish order based on precise finish time (with fractional tick interpolation).
+ * - Lower finishTime = crossed finish line earlier = higher position
+ * - Dead heats only occur when finishTime is exactly equal (very rare with interpolation)
+ *
+ * @param {number[]} finishTimes - Precise finish time for each lane (-1 if not crossed)
+ * @param {number[]} distances - Final distances (for tiebreaker ordering)
+ * @returns {Object}
+ */
+function calculateFinishOrder(finishTimes, distances) {
+  // Sort lanes by finishTime (ascending - earlier = better), then distance descending for ordering
+  const sorted = finishTimes
+    .map((time, lane) => ({ lane, time, distance: distances[lane] }))
     .sort((a, b) => {
-      if (a.tick !== b.tick) return a.tick - b.tick;
-      return b.distance - a.distance;
+      if (a.time !== b.time) return a.time - b.time; // Earlier time wins
+      return b.distance - a.distance; // Same time: higher distance for consistent ordering
     });
 
+  // Group by finishTime for dead heat detection (rare with interpolation)
   const groups = [];
-  let currentGroup = { tick: sorted[0].tick, lanes: [sorted[0].lane] };
+  let currentGroup = { time: sorted[0].time, lanes: [sorted[0].lane] };
 
   for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i].tick === currentGroup.tick) {
+    if (sorted[i].time === currentGroup.time) {
       currentGroup.lanes.push(sorted[i].lane);
     } else {
       groups.push(currentGroup);
-      currentGroup = { tick: sorted[i].tick, lanes: [sorted[i].lane] };
+      currentGroup = { time: sorted[i].time, lanes: [sorted[i].lane] };
     }
   }
   groups.push(currentGroup);
 
+  // Assign positions
   const first = { lanes: [], count: 0 };
   const second = { lanes: [], count: 0 };
   const third = { lanes: [], count: 0 };
@@ -169,19 +222,22 @@ function calculateFinishOrder(finishTicks, distances) {
   let position = 0;
   for (const group of groups) {
     if (position === 0) {
+      // First place
       first.lanes = group.lanes;
       first.count = group.lanes.length;
       position += group.lanes.length;
     } else if (position === 1) {
+      // Second place (or tied for first overflowing)
       second.lanes = group.lanes;
       second.count = group.lanes.length;
       position += group.lanes.length;
     } else if (position === 2) {
+      // Third place
       third.lanes = group.lanes;
       third.count = group.lanes.length;
       position += group.lanes.length;
     } else if (position >= 3) {
-      break;
+      break; // We have all we need
     }
   }
 
@@ -192,10 +248,36 @@ function calculateFinishOrder(finishTicks, distances) {
 // Probability accumulators with dead heat rules
 // -----------------------
 
+/**
+ * Update lane stats based on finish order with STANDARD dead heat rules.
+ *
+ * Standard Dead Heat Rules (matches real horse racing):
+ * - If your animal's position CLEARLY qualifies → full payout
+ * - If your animal TIED for the LAST qualifying position → payout ÷ (number tied)
+ *
+ * WIN (position 1 only):
+ * - Single 1st → full credit
+ * - Tied for 1st → split credit (1/N each)
+ *
+ * PLACE (positions 1-2):
+ * - Position 1 → always full credit
+ * - Position 2 (no tie) → full credit
+ * - Tied for 2nd → split one credit among all tied
+ * - Note: If 2+ tied for 1st, they occupy ALL place spots (no split needed for them)
+ *
+ * SHOW (positions 1-3):
+ * - Positions 1-2 → always full credit
+ * - Position 3 (no tie) → full credit
+ * - Tied for 3rd → split one credit among all tied
+ *
+ * @param {Object[]} stats
+ * @param {Object} finishOrder
+ */
 function accumulateStats(stats, finishOrder) {
   const { first, second, third } = finishOrder;
 
   // ===== WIN (1 spot) =====
+  // Tied for 1st? Split the single win credit
   const winShare = 1 / first.count;
   for (const lane of first.lanes) {
     stats[lane].winCredits += winShare;
@@ -205,26 +287,33 @@ function accumulateStats(stats, finishOrder) {
   const placeSpots = 2;
   let placeUsed = 0;
 
+  // First group
   if (first.count <= placeSpots) {
+    // All first-placers fit in Place spots → full credit each
     for (const lane of first.lanes) {
       stats[lane].placeCredits += 1;
     }
     placeUsed = first.count;
   } else {
+    // More tied for first than Place spots → they're tied for LAST qualifying position
+    // Split the available spots among them
     const placeShare = placeSpots / first.count;
     for (const lane of first.lanes) {
       stats[lane].placeCredits += placeShare;
     }
-    placeUsed = placeSpots;
+    placeUsed = placeSpots; // All spots filled
   }
 
+  // Second group (only if Place spots remain)
   const placeRemaining = placeSpots - placeUsed;
   if (placeRemaining > 0 && second.count > 0) {
     if (second.count <= placeRemaining) {
+      // All fit → full credit each
       for (const lane of second.lanes) {
         stats[lane].placeCredits += 1;
       }
     } else {
+      // Tied for last qualifying Place position → split remaining spots
       const placeShare = placeRemaining / second.count;
       for (const lane of second.lanes) {
         stats[lane].placeCredits += placeShare;
@@ -236,12 +325,14 @@ function accumulateStats(stats, finishOrder) {
   const showSpots = 3;
   let showUsed = 0;
 
+  // First group
   if (first.count <= showSpots) {
     for (const lane of first.lanes) {
       stats[lane].showCredits += 1;
     }
     showUsed = first.count;
   } else {
+    // More tied for first than Show spots
     const showShare = showSpots / first.count;
     for (const lane of first.lanes) {
       stats[lane].showCredits += showShare;
@@ -249,6 +340,7 @@ function accumulateStats(stats, finishOrder) {
     showUsed = showSpots;
   }
 
+  // Second group
   let showRemaining = showSpots - showUsed;
   if (showRemaining > 0 && second.count > 0) {
     if (second.count <= showRemaining) {
@@ -265,6 +357,7 @@ function accumulateStats(stats, finishOrder) {
     }
   }
 
+  // Third group
   showRemaining = showSpots - showUsed;
   if (showRemaining > 0 && third.count > 0) {
     if (third.count <= showRemaining) {
@@ -281,34 +374,59 @@ function accumulateStats(stats, finishOrder) {
 }
 
 // -----------------------
-// Library exports
+// Formatting helpers
+// -----------------------
+
+function fmtPct(p) {
+  return `${(p * 100).toFixed(2)}%`;
+}
+
+function fmtBps(p) {
+  return Math.round(p * 10000);
+}
+
+// -----------------------
+// Exported functions for bot integration
 // -----------------------
 
 /**
- * Calculate raw probabilities for a 6-lane race using Monte Carlo simulation.
- * Returns probabilities in basis points (0-10000).
- * 
- * NOTE: House edge is NOT applied here. The contract applies edge when converting
- * probabilities to odds: odds = (1 - houseEdge) / probability
- * 
- * @param {number[]} scores - Array of 6 scores (1-10 for each lane)
- * @param {number} samples - Number of simulations to run (default: 50000)
- * @returns {{ winProbBps: number[], placeProbBps: number[], showProbBps: number[], ... }}
+ * Calculate Win/Place/Show probabilities for a race using Monte Carlo simulation.
+ *
+ * @param {number[]} scores - Array of 6 scores (1-10)
+ * @param {number} samples - Number of simulations to run
+ * @param {number} [salt=0] - Optional salt for seed variety
+ * @returns {{
+ *   scores: number[],
+ *   samples: number,
+ *   elapsedMs: number,
+ *   winProbBps: number[],
+ *   placeProbBps: number[],
+ *   showProbBps: number[],
+ *   lanes: Array<{lane: number, score: number, winProbBps: number, placeProbBps: number, showProbBps: number, winProb: number, placeProb: number, showProb: number}>
+ * }}
  */
-export function calculateProbabilities(scores, samples = 50000) {
-  if (scores.length !== 6) {
-    throw new Error('Expected exactly 6 scores');
+export function calculateProbabilities(scores, samples, salt = 0) {
+  // Validate inputs
+  if (!Array.isArray(scores) || scores.length !== LANE_COUNT) {
+    throw new Error(`Expected ${LANE_COUNT} scores, got ${scores?.length}`);
+  }
+  if (!Number.isFinite(samples) || samples <= 0) {
+    throw new Error('samples must be > 0');
   }
 
+  // Clamp scores
   const clampedScores = scores.map(s => clampScore(s));
-  
+
+  // Initialize stats
   const stats = Array.from({ length: LANE_COUNT }, () => ({
     winCredits: 0,
     placeCredits: 0,
     showCredits: 0,
   }));
 
-  const seedState = { x: (Date.now() * 0x9e3779b9) >>> 0 || 0x12345678 };
+  // Seed generator state
+  const seedState = { x: (salt * 0x9e3779b9) >>> 0 || 0x12345678 };
+  // Mix in scores
   for (const s of clampedScores) {
     seedState.x = (seedState.x ^ (s * 0x85ebca6b)) >>> 0;
     splitmix32Next(seedState);
@@ -316,6 +434,7 @@ export function calculateProbabilities(scores, samples = 50000) {
 
   const started = Date.now();
 
+  // Run simulations
   for (let i = 0; i < samples; i++) {
     const seed = splitmix32Next(seedState);
     const { finishOrder } = simulateFullRace(seed, clampedScores);
@@ -324,164 +443,62 @@ export function calculateProbabilities(scores, samples = 50000) {
 
   const elapsedMs = Date.now() - started;
 
-  const winProbBps = [];
-  const placeProbBps = [];
-  const showProbBps = [];
+  // Calculate probabilities
+  const lanes = stats.map((s, lane) => ({
+    lane,
+    score: clampedScores[lane],
+    winProbBps: fmtBps(s.winCredits / samples),
+    placeProbBps: fmtBps(s.placeCredits / samples),
+    showProbBps: fmtBps(s.showCredits / samples),
+    winProb: s.winCredits / samples,
+    placeProb: s.placeCredits / samples,
+    showProb: s.showCredits / samples,
+  }));
 
-  for (let i = 0; i < LANE_COUNT; i++) {
-    const winProb = stats[i].winCredits / samples;
-    const placeProb = stats[i].placeCredits / samples;
-    const showProb = stats[i].showCredits / samples;
-
-    winProbBps.push(Math.round(winProb * 10000));
-    placeProbBps.push(Math.round(placeProb * 10000));
-    showProbBps.push(Math.round(showProb * 10000));
-  }
+  // Extract BPS arrays for contract submission
+  const winProbBps = lanes.map(l => l.winProbBps);
+  const placeProbBps = lanes.map(l => l.placeProbBps);
+  const showProbBps = lanes.map(l => l.showProbBps);
 
   return {
-    winProbBps,
-    placeProbBps,
-    showProbBps,
     scores: clampedScores,
     samples,
     elapsedMs,
+    winProbBps,
+    placeProbBps,
+    showProbBps,
+    lanes,
   };
 }
 
 /**
- * Format probabilities for logging
+ * Format probability results for logging output.
+ *
+ * @param {Object} result - Result from calculateProbabilities
+ * @returns {string} - Formatted string for console output
  */
 export function formatProbabilitiesForLog(result) {
   const lines = [];
-  lines.push('╔═══════════════════════════════════════════════════════════════════════════╗');
-  lines.push('║         MONTE CARLO - WIN/PLACE/SHOW PROBABILITIES (6 lanes)             ║');
-  lines.push('╠═══════════════════════════════════════════════════════════════════════════╣');
-  lines.push(`║  Scores:  ${result.scores.join(', ').padEnd(60)}║`);
-  lines.push(`║  Samples: ${result.samples.toLocaleString().padEnd(60)}║`);
-  lines.push(`║  Elapsed: ${result.elapsedMs}ms (${Math.round(result.samples / result.elapsedMs * 1000).toLocaleString()} sims/sec)`.padEnd(76) + '║');
-  lines.push('╠═══════════════════════════════════════════════════════════════════════════╣');
-  lines.push('║  Lane │ Score │    Win Prob    │   Place Prob   │   Show Prob    ║');
-  lines.push('╠═══════════════════════════════════════════════════════════════════════════╣');
+  lines.push('    ┌────────┬───────┬─────────────────┬─────────────────┬─────────────────┐');
+  lines.push('    │  Lane  │ Score │    Win Prob     │   Place Prob    │   Show Prob     │');
+  lines.push('    ├────────┼───────┼─────────────────┼─────────────────┼─────────────────┤');
 
-  for (let i = 0; i < LANE_COUNT; i++) {
-    const winPct = (result.winProbBps[i] / 100).toFixed(2) + '%';
-    const placePct = (result.placeProbBps[i] / 100).toFixed(2) + '%';
-    const showPct = (result.showProbBps[i] / 100).toFixed(2) + '%';
-    
-    const winStr = `${winPct.padStart(7)} (${result.winProbBps[i].toString().padStart(4)} bps)`;
-    const placeStr = `${placePct.padStart(7)} (${result.placeProbBps[i].toString().padStart(4)} bps)`;
-    const showStr = `${showPct.padStart(7)} (${result.showProbBps[i].toString().padStart(4)} bps)`;
-    
-    lines.push(`║   ${i}   │   ${result.scores[i].toString().padStart(2)}  │ ${winStr} │ ${placeStr} │ ${showStr} ║`);
+  for (const r of result.lanes) {
+    const winStr = `${fmtPct(r.winProb).padStart(7)} (${r.winProbBps.toString().padStart(4)} bps)`;
+    const placeStr = `${fmtPct(r.placeProb).padStart(7)} (${r.placeProbBps.toString().padStart(4)} bps)`;
+    const showStr = `${fmtPct(r.showProb).padStart(7)} (${r.showProbBps.toString().padStart(4)} bps)`;
+    lines.push(`    │   ${r.lane}    │  ${r.score.toString().padStart(2)}   │ ${winStr} │ ${placeStr} │ ${showStr} │`);
   }
 
-  lines.push('╚═══════════════════════════════════════════════════════════════════════════╝');
-  
-  const winSum = result.winProbBps.reduce((a, b) => a + b, 0);
-  const placeSum = result.placeProbBps.reduce((a, b) => a + b, 0);
-  const showSum = result.showProbBps.reduce((a, b) => a + b, 0);
-  lines.push('');
-  lines.push(`Sum checks: Win=${winSum} bps (≈10000), Place=${placeSum} bps (≈20000), Show=${showSum} bps (≈30000)`);
-  lines.push('Note: House edge is applied ON-CHAIN, not here.');
-  
+  lines.push('    └────────┴───────┴─────────────────┴─────────────────┴─────────────────┘');
+
+  // Verify sums
+  const winSum = result.lanes.reduce((a, r) => a + r.winProb, 0);
+  const placeSum = result.lanes.reduce((a, r) => a + r.placeProb, 0);
+  const showSum = result.lanes.reduce((a, r) => a + r.showProb, 0);
+  lines.push(`    Sum checks: Win=${winSum.toFixed(4)} (≈1.00), Place=${placeSum.toFixed(4)} (≈2.00), Show=${showSum.toFixed(4)} (≈3.00)`);
+
   return lines.join('\n');
 }
 
 export default { calculateProbabilities, formatProbabilitiesForLog };
-
-// -----------------------
-// CLI support
-// -----------------------
-
-function parseArgs(argv) {
-  const out = {
-    scores: null,
-    samples: 10_000,
-    salt: 0,
-    json: false,
-    help: false,
-  };
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '--scores') out.scores = String(argv[++i] ?? '');
-    else if (a === '--samples') out.samples = Number(argv[++i]);
-    else if (a === '--salt') out.salt = Number(argv[++i]) || 0;
-    else if (a === '--json') out.json = true;
-    else if (a === '--help' || a === '-h') out.help = true;
-  }
-  return out;
-}
-
-function usage() {
-  console.log('monte-carlo.js - Win/Place/Show probability calculator');
-  console.log('');
-  console.log('Usage:');
-  console.log('  node src/monte-carlo.js --scores s1,s2,s3,s4,s5,s6 [options]');
-  console.log('');
-  console.log('Options:');
-  console.log('  --scores  s1,s2,s3,s4,s5,s6   (required; each 1..10)');
-  console.log('  --samples N                   (default 10000)');
-  console.log('  --salt    X                   (optional; numeric salt for seed variety)');
-  console.log('  --json                        (output raw JSON for programmatic use)');
-  console.log('');
-  console.log('WINNER DETERMINATION: First to cross the finish line (1000 units) wins!');
-  console.log('');
-  console.log('Output:');
-  console.log('  Win:   Probability of finishing 1st (in basis points)');
-  console.log('  Place: Probability of finishing 1st OR 2nd (in basis points)');
-  console.log('  Show:  Probability of finishing 1st, 2nd, OR 3rd (in basis points)');
-  console.log('');
-  console.log('Note: House edge is applied ON-CHAIN, not here.');
-}
-
-function parseScores(s) {
-  const parts = String(s)
-    .split(',')
-    .map(x => x.trim())
-    .filter(Boolean);
-  if (parts.length !== 6) throw new Error('Expected 6 comma-separated scores');
-  return parts.map(x => clampScore(Number(x)));
-}
-
-// Only run CLI if invoked directly
-const isMain = process.argv[1]?.endsWith('monte-carlo.js');
-if (isMain) {
-  const args = parseArgs(process.argv.slice(2));
-  
-  if (args.help) {
-    usage();
-    process.exit(0);
-  }
-  
-  if (!args.scores) {
-    usage();
-    console.error('\nError: --scores is required');
-    process.exit(1);
-  }
-  
-  if (!Number.isFinite(args.samples) || args.samples <= 0) {
-    console.error('Error: --samples must be > 0');
-    process.exit(1);
-  }
-
-  const scores = parseScores(args.scores);
-  const result = calculateProbabilities(scores, args.samples);
-
-  if (args.json) {
-    const output = {
-      scores: result.scores,
-      samples: result.samples,
-      elapsedMs: result.elapsedMs,
-      lanes: result.scores.map((score, lane) => ({
-        lane,
-        score,
-        winProbBps: result.winProbBps[lane],
-        placeProbBps: result.placeProbBps[lane],
-        showProbBps: result.showProbBps[lane],
-      })),
-    };
-    console.log(JSON.stringify(output, null, 2));
-  } else {
-    console.log(formatProbabilitiesForLog(result));
-  }
-}

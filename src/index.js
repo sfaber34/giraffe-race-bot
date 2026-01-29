@@ -59,7 +59,7 @@ function loadGasTracking() {
   } catch (error) {
     log('⚠️', `Failed to load gas tracking file: ${error.message}`);
   }
-  return { races: {}, totals: { createRace: 0, setProbabilities: 0, settleRace: 0, cancelRace: 0, total: 0 } };
+  return { races: {}, totals: { createRace: 0, setProbabilities: 0, settleRace: 0, cancelRace: 0, cleanupExpiredRace: 0, total: 0 } };
 }
 
 function saveGasTracking(data) {
@@ -90,7 +90,8 @@ function trackGasUsage(raceId, transactionType, gasUsed, txHash) {
     (raceData.createRace?.gasUsed || 0) + 
     (raceData.setProbabilities?.gasUsed || 0) + 
     (raceData.settleRace?.gasUsed || 0) +
-    (raceData.cancelRace?.gasUsed || 0);
+    (raceData.cancelRace?.gasUsed || 0) +
+    (raceData.cleanupExpiredRace?.gasUsed || 0);
   
   // Rebuild with correct order
   const orderedRaceData = {};
@@ -98,6 +99,7 @@ function trackGasUsage(raceId, transactionType, gasUsed, txHash) {
   if (raceData.setProbabilities) orderedRaceData.setProbabilities = raceData.setProbabilities;
   if (raceData.settleRace) orderedRaceData.settleRace = raceData.settleRace;
   if (raceData.cancelRace) orderedRaceData.cancelRace = raceData.cancelRace;
+  if (raceData.cleanupExpiredRace) orderedRaceData.cleanupExpiredRace = raceData.cleanupExpiredRace;
   orderedRaceData.totalGasUsed = raceTotalGas;
   data.races[raceKey] = orderedRaceData;
   
@@ -123,6 +125,7 @@ function logGasSummary() {
   console.log(`    ├─ Set Probabilities Total: ${data.totals.setProbabilities?.toLocaleString() || 0} gas`);
   console.log(`    ├─ Settle Total: ${data.totals.settleRace?.toLocaleString() || 0} gas`);
   console.log(`    ├─ Cancel Total: ${data.totals.cancelRace?.toLocaleString() || 0} gas`);
+  console.log(`    ├─ Cleanup Expired Total: ${data.totals.cleanupExpiredRace?.toLocaleString() || 0} gas`);
   console.log(`    └─ Grand Total: ${data.totals.total?.toLocaleString() || 0} gas`);
 }
 
@@ -248,10 +251,10 @@ async function waitForActiveUsers() {
 
 /**
  * Get the current bot action from the contract.
- * @returns {{ action: number, raceId: bigint, blocksRemaining: number, scores: number[] }}
+ * @returns {{ action: number, raceId: bigint, blocksRemaining: number, scores: number[], expiredRaceIds: bigint[] }}
  */
 async function getBotDashboard() {
-  const [action, raceId, blocksRemaining, scores] = await withRetry(() => 
+  const [action, raceId, blocksRemaining, scores, expiredRaceIds] = await withRetry(() => 
     giraffeRace.getBotDashboard()
   );
   
@@ -260,6 +263,7 @@ async function getBotDashboard() {
     raceId,
     blocksRemaining: Number(blocksRemaining),
     scores: scores.map(s => Number(s)),
+    expiredRaceIds: expiredRaceIds || [],
   };
 }
 
@@ -363,6 +367,27 @@ async function executeCancelRace(raceId) {
   }
 }
 
+async function executeCleanupExpiredRace(raceId) {
+  log('🧹', `Cleaning up expired Race #${raceId} (releasing forfeited winnings)...`);
+  try {
+    const tx = await giraffeRace.cleanupExpiredRace(raceId);
+    log('📤', `Transaction sent: ${tx.hash}`);
+    log('⏳', 'Waiting for confirmation...');
+    
+    const receipt = await tx.wait();
+    const gasUsed = receipt.gasUsed.toString();
+    log('✅', `Expired Race #${raceId} cleaned up! Gas used: ${gasUsed}`);
+    
+    trackGasUsage(raceId, 'cleanupExpiredRace', gasUsed, tx.hash);
+    
+    return { success: true, gasUsed, txHash: tx.hash };
+  } catch (error) {
+    const decodedError = decodeContractError(error);
+    log('❌', `Failed to cleanup expired race #${raceId}: ${decodedError}`);
+    return { success: false, error: decodedError };
+  }
+}
+
 // ============================================================================
 // MAIN BOT LOOP
 // ============================================================================
@@ -400,6 +425,19 @@ async function runBot() {
       
       logDivider();
       log('📦', `Block: ${currentBlock} | Action: ${BOT_ACTION_NAMES[dashboard.action]} | Race: ${dashboard.raceId > 0n ? `#${dashboard.raceId}` : 'None'} | Blocks Remaining: ${dashboard.blocksRemaining}`);
+      
+      // Process any expired races that need cleanup (forfeited winnings)
+      if (dashboard.expiredRaceIds && dashboard.expiredRaceIds.length > 0) {
+        log('🧹', `Found ${dashboard.expiredRaceIds.length} expired race(s) to clean up`);
+        for (const expiredRaceId of dashboard.expiredRaceIds) {
+          const result = await executeCleanupExpiredRace(expiredRaceId);
+          if (result.success) {
+            await sleep(2000);
+          } else {
+            log('⚠️', `Will retry cleanup for Race #${expiredRaceId} on next loop`);
+          }
+        }
+      }
       
       switch (dashboard.action) {
         // ========================================
